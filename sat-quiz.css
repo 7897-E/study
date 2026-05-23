@@ -1053,11 +1053,14 @@ body.dyslexia-friendly textarea {
 .settings-modal {
   width: 520px;
   max-width: 92vw;
+  max-height: 90vh;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow-modal);
   padding: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .settings-header {
   display: flex;
@@ -1290,6 +1293,7 @@ body.dyslexia-friendly textarea {
   .settings-modal {
     width: 96vw;
     padding: 12px;
+    max-height: 88vh;
   }
 
   .settings-row {
