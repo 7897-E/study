@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAT Quiz</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="stylesheet" href="sat-quiz.css">
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loadingText">Parsing PDF...</div>
+</div>
+
+<div class="top-bar">
+  <div class="top-left-actions">
+    <button class="toggle-sidebar-btn" id="toggleSidebarBtn" title="Toggle question list">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="logo">SAT Quiz</div>
+  </div>
+  <div class="top-actions">
+    <button class="btn btn-sm" id="importNewBtn" onclick="SAT_APP.importNew()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Import PDF
+    </button>
+    <button class="btn btn-sm" id="settingsBtn" onclick="SAT_APP.openSettings()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+  </div>
+</div>
+
+<div class="main-container">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-header-top">
+        <h3>Questions</h3>
+        <button class="btn btn-sm" id="reviewBtn" onclick="SAT_APP.showReview()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Review
+        </button>
+      </div>
+      <div class="pdf-info" id="pdfInfo">No PDF loaded</div>
+    </div>
+    <div class="question-list" id="questionList">
+      <div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:0.85em;">Import a PDF to get started</div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn btn-sm btn-primary" id="importBtn" onclick="SAT_APP.importNew()">Import PDF</button>
+    </div>
+  </div>
+
+  <div class="quiz-area">
+    <div class="import-screen" id="importScreen">
+      <h1>SAT Quiz</h1>
+      <p>Import a PDF exported from your SAT question bank to start practicing. Drag & drop or click to browse. Supports the standard College Board question bank export format with Question ID, options A-D, Correct Answer, and Rationale sections.</p>
+      <div class="import-zone" id="importZone" onclick="document.getElementById('fileInput').click()">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="12"/><line x1="15" y1="15" x2="12" y2="12"/></svg>
+        <div class="import-zone-text">Drop your SAT PDF here or click to browse</div>
+        <div class="import-zone-hint">Supports SAT question bank exports (Question ID, Answer, Rationale format)</div>
+        <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="SAT_APP.handleFile(event)">
+      </div>
+      <div style="margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;">
+        <button class="btn btn-sm" onclick="SAT_APP.loadSample()">Load Sample Data</button>
+        <button class="btn btn-sm" onclick="SAT_APP.pasteFromClipboard()">Paste Text</button>
+        <span style="font-size:0.75em;color:var(--text-secondary);">or paste SAT bank text from clipboard</span>
+      </div>
+    </div>
+
+    <div class="question-screen" id="questionScreen">
+      <div class="progress-bar-container">
+        <div class="progress-stats">
+          <div class="progress-stats-left">
+            <span class="progress-stat">Question <strong id="currentQNum">1</strong> of <strong id="totalQNum">0</strong></span>
+            <span class="progress-stat correct-stat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> <strong id="correctCount">0</strong></span>
+            <span class="progress-stat wrong-stat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> <strong id="wrongCount">0</strong></span>
+          </div>
+          <span class="progress-stat" id="progressPctText">0%</span>
+        </div>
+        <div class="momentum-row" id="momentumRow">
+          <span class="momentum-badges" id="momentumBadges"></span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="question-content" id="questionContent">
+        <div>
+          <span class="q-number-badge" id="qBadge">Question 1</span>
+          <span class="q-domain-badge" id="qDomain" style="display:none"></span>
+          <button class="bookmark-btn" id="bookmarkBtn" onclick="SAT_APP.toggleBookmarkCurrent()" title="Bookmark this question">☆ Bookmark</button>
+        </div>
+        <div class="q-text" id="qText"></div>
+        <div class="feedback-banner" id="feedbackBanner"></div>
+        <div class="options-list" id="optionsList"></div>
+        <div class="question-actions">
+          <button class="btn btn-sm" id="showExplanationBtn" style="display:none">Show Explanation</button>
+        </div>
+        <div class="explanation-box" id="explanationBox">
+          <h4>Explanation</h4>
+          <div class="correct-answer-label" id="correctAnswerLabel">Correct answer: A</div>
+          <p id="explanationText"></p>
+          <div class="choice-breakdown" id="choiceBreakdown"></div>
+        </div>
+      </div>
+
+      <div class="nav-bar">
+        <div class="nav-left">
+          <button class="nav-arrow" id="prevBtn" onclick="SAT_APP.prevQuestion()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><polyline points="15 18 9 12 15 6"/></svg>
+            Previous
+          </button>
+        </div>
+        <div class="nav-center" id="navCenter"></div>
+        <div class="nav-right">
+          <button class="nav-arrow" id="nextBtn" onclick="SAT_APP.nextQuestion()">
+            Next
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:4px"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="btn btn-sm btn-primary" id="finishReviewBtn" onclick="SAT_APP.showReview()">Finish Review</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="review-screen" id="reviewScreen">
+      <div class="review-header">
+        <h1 id="reviewTitle">Review Complete!</h1>
+        <p id="reviewSubtitle">Here's how you did on this set.</p>
+      </div>
+      <div class="review-score-cards" id="reviewScoreCards">
+        <div class="review-score-card total">
+          <div class="score-num" id="reviewTotal">0</div>
+          <div class="score-label">Total Questions</div>
+        </div>
+        <div class="review-score-card correct">
+          <div class="score-num" id="reviewCorrect">0</div>
+          <div class="score-label">Correct</div>
+        </div>
+        <div class="review-score-card wrong">
+          <div class="score-num" id="reviewWrong">0</div>
+          <div class="score-label">Wrong</div>
+        </div>
+        <div class="review-score-card correct">
+          <div class="score-num" id="reviewAccuracy">0%</div>
+          <div class="score-label">Accuracy</div>
+        </div>
+      </div>
+      <div class="trend-charts" id="trendCharts">
+        <div class="trend-card">
+          <div class="trend-title">Accuracy Trend (last 10)</div>
+          <div class="trend-bars" id="accuracyTrendBars"></div>
+        </div>
+      </div>
+      <div id="reviewFilters" class="review-filters"></div>
+      <div class="review-question-list" id="reviewQuestionList"></div>
+      <div style="text-align:center;margin-top:20px;">
+        <button class="btn btn-primary" onclick="SAT_APP.startOver()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Start Over
+        </button>
+        <button class="btn" onclick="SAT_APP.copyProgressReport()" style="margin-left:8px;">Copy Progress Report</button>
+        <button class="btn" onclick="SAT_APP.importNew()" style="margin-left:8px;">New PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="sat-quiz.js"></script>
+
+<div class="settings-overlay" id="settingsOverlay" style="display:none">
+  <div class="settings-modal">
+    <div class="settings-header">
+      <h3>Settings</h3>
+      <button class="btn btn-sm" onclick="SAT_APP.closeSettings()">Close</button>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Anti Click-Through Mode</div>
+        <div class="settings-subtitle">Detects rushed answering patterns and rewinds to where rushing started.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="antiClickToggle" onchange="SAT_APP.toggleAntiClick(this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Anti Click-Through Sensitivity</div>
+        <div class="settings-subtitle">Controls how quickly rushed-answer protection triggers.</div>
+      </div>
+      <select id="antiClickSensitivity" class="settings-select" onchange="SAT_APP.setAntiClickSensitivity(this.value)">
+        <option value="relaxed">Relaxed</option>
+        <option value="standard">Standard</option>
+        <option value="strict">Strict</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Auto-Continue on Correct Answer</div>
+        <div class="settings-subtitle">Automatically moves to the next question when you answer correctly.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoContinueToggle" onchange="SAT_APP.toggleAutoContinue(this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Auto-Continue Delay (ms)</div>
+        <div class="settings-subtitle">Delay before moving to the next question after a correct answer (0–3000 ms).</div>
+      </div>
+      <div class="settings-delay-control">
+        <input
+          type="range"
+          id="autoContinueDelay"
+          min="0"
+          max="3000"
+          step="50"
+          value="500"
+          oninput="SAT_APP.setAutoContinueDelay(this.value)"
+        >
+        <span id="autoContinueDelayValue">500 ms</span>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Keyboard Shortcuts</div>
+        <div class="settings-subtitle">View and customize answer + navigation keys.</div>
+      </div>
+      <button class="btn btn-sm" onclick="SAT_APP.openShortcutsModal()">Edit Shortcuts</button>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Theme</div>
+        <div class="settings-subtitle">Switch between dark and light mode.</div>
+      </div>
+      <select id="themeSelect" class="settings-select" onchange="SAT_APP.setTheme(this.value)">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Dyslexia-Friendly Font</div>
+        <div class="settings-subtitle">Use a readability-focused font style.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="dyslexiaFontToggle" onchange="SAT_APP.toggleDyslexiaFont(this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="settings-row danger-row">
+      <div>
+        <div class="settings-title">Reset Progress</div>
+        <div class="settings-subtitle">Clear all loaded questions and progress.</div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="SAT_APP.confirmReset()">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div class="settings-overlay" id="shortcutsOverlay" style="display:none">
+  <div class="settings-modal">
+    <div class="settings-header">
+      <h3>Keyboard Shortcuts</h3>
+      <button class="btn btn-sm" onclick="SAT_APP.closeShortcutsModal()">Close</button>
+    </div>
+    <div class="settings-row"><div><div class="settings-title">Answer Choice A</div></div><div style="display:flex;gap:6px;align-items:center"><input id="scAnswer1" class="settings-select" type="text" maxlength="20" readonly onclick="SAT_APP.startShortcutCapture('scAnswer1')" onkeydown="SAT_APP.captureShortcutKeydown(event, 'scAnswer1')"><button class="btn btn-sm" onclick="SAT_APP.clearShortcutField('scAnswer1')">Clear</button></div></div>
+    <div class="settings-row"><div><div class="settings-title">Answer Choice B</div></div><div style="display:flex;gap:6px;align-items:center"><input id="scAnswer2" class="settings-select" type="text" maxlength="20" readonly onclick="SAT_APP.startShortcutCapture('scAnswer2')" onkeydown="SAT_APP.captureShortcutKeydown(event, 'scAnswer2')"><button class="btn btn-sm" onclick="SAT_APP.clearShortcutField('scAnswer2')">Clear</button></div></div>
+    <div class="settings-row"><div><div class="settings-title">Answer Choice C</div></div><div style="display:flex;gap:6px;align-items:center"><input id="scAnswer3" class="settings-select" type="text" maxlength="20" readonly onclick="SAT_APP.startShortcutCapture('scAnswer3')" onkeydown="SAT_APP.captureShortcutKeydown(event, 'scAnswer3')"><button class="btn btn-sm" onclick="SAT_APP.clearShortcutField('scAnswer3')">Clear</button></div></div>
+    <div class="settings-row"><div><div class="settings-title">Answer Choice D</div></div><div style="display:flex;gap:6px;align-items:center"><input id="scAnswer4" class="settings-select" type="text" maxlength="20" readonly onclick="SAT_APP.startShortcutCapture('scAnswer4')" onkeydown="SAT_APP.captureShortcutKeydown(event, 'scAnswer4')"><button class="btn btn-sm" onclick="SAT_APP.clearShortcutField('scAnswer4')">Clear</button></div></div>
+    <div class="settings-row"><div><div class="settings-title">Previous Question</div><div class="settings-subtitle">Click then press a key or combo</div></div><div style="display:flex;gap:6px;align-items:center"><input id="scPrev" class="settings-select" type="text" maxlength="30" readonly onclick="SAT_APP.startShortcutCapture('scPrev')" onkeydown="SAT_APP.captureShortcutKeydown(event, 'scPrev')"><button class="btn btn-sm" onclick="SAT_APP.clearShortcutField('scPrev')">Clear</button></div></div>
+    <div class="settings-row"><div><div class="settings-title">Next Question</div><div class="settings-subtitle">Click then press a key or combo</div></div><div style="display:flex;gap:6px;align-items:center"><input id="scNext" class="settings-select" type="text" maxlength="30" readonly onclick="SAT_APP.startShortcutCapture('scNext')" onkeydown="SAT_APP.captureShortcutKeydown(event, 'scNext')"><button class="btn btn-sm" onclick="SAT_APP.clearShortcutField('scNext')">Clear</button></div></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+      <button class="btn" onclick="SAT_APP.resetShortcutsToDefaults()">Reset to Defaults</button>
+      <button class="btn" onclick="SAT_APP.closeShortcutsModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="SAT_APP.saveShortcutsFromModal()">Save Shortcuts</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
