@@ -102,6 +102,114 @@ const SAT_APP = {
   saveState() {
     try { localStorage.setItem('sat_quiz_state', JSON.stringify({ questions: this.questions, answers: this.answers, revealed: this.revealed, explanationViewed: this.explanationViewed, bookmarked: this.bookmarked, currentIndex: this.currentIndex, pdfLoaded: this.pdfLoaded, pdfName: this.pdfName, settings: this.settings, momentum: this.momentum, trendHistory: this.trendHistory })); } catch(e) {}
   },
+  buildExportPayload() {
+    return {
+      schema: 'sat_quiz_export_v1',
+      exportedAt: new Date().toISOString(),
+      state: {
+        questions: this.questions,
+        answers: this.answers,
+        revealed: this.revealed,
+        explanationViewed: this.explanationViewed,
+        bookmarked: this.bookmarked,
+        currentIndex: this.currentIndex,
+        pdfLoaded: this.pdfLoaded,
+        pdfName: this.pdfName,
+        settings: this.settings,
+        momentum: this.momentum,
+        trendHistory: this.trendHistory
+      }
+    };
+  },
+  exportSession() {
+    if (!this.questions || this.questions.length === 0) {
+      this.toast('No loaded quiz to export yet.', 'warning');
+      return;
+    }
+    try {
+      const payload = this.buildExportPayload();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = (this.pdfName || 'sat-quiz').replace(/[^a-z0-9-_]+/gi, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `${safeName || 'sat-quiz'}-progress-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      this.toast('Quiz + progress exported.', 'success');
+    } catch (e) {
+      this.toast('Failed to export progress: ' + (e.message || e), 'error');
+    }
+  },
+  importSession() {
+    const picker = document.getElementById('stateFileInput');
+    if (!picker) {
+      this.toast('Import file input is missing.', 'error');
+      return;
+    }
+    picker.value = '';
+    picker.click();
+  },
+  async handleImportStateFile(event) {
+    const file = event && event.target && event.target.files ? event.target.files[0] : null;
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      this.applyImportedState(payload);
+      this.toast('Progress imported successfully.', 'success');
+    } catch (e) {
+      this.toast('Import failed: ' + (e.message || e), 'error');
+    } finally {
+      if (event && event.target) event.target.value = '';
+    }
+  },
+  applyImportedState(payload) {
+    const state = payload && payload.state ? payload.state : payload;
+    if (!state || !Array.isArray(state.questions) || state.questions.length === 0) {
+      throw new Error('Invalid file: missing questions array.');
+    }
+
+    this.questions = state.questions;
+    this.answers = Array.isArray(state.answers) ? state.answers : new Array(this.questions.length).fill(-1);
+    this.revealed = Array.isArray(state.revealed) ? state.revealed : new Array(this.questions.length).fill(false);
+    this.explanationViewed = Array.isArray(state.explanationViewed) ? state.explanationViewed : new Array(this.questions.length).fill(false);
+    this.bookmarked = Array.isArray(state.bookmarked) ? state.bookmarked : new Array(this.questions.length).fill(false);
+    this.currentIndex = Math.max(0, Math.min(this.questions.length - 1, Number(state.currentIndex || 0)));
+    this.pdfLoaded = state.pdfLoaded !== false;
+    this.pdfName = String(state.pdfName || 'Imported SAT Quiz');
+
+    this.settings = Object.assign({
+      antiClickThrough: false,
+      antiClickSensitivity: 'standard',
+      autoContinueOnCorrect: false,
+      autoContinueDelayMs: 500,
+      theme: 'dark',
+      dyslexiaFont: false,
+      shortcuts: { answer1: '1', answer2: '2', answer3: '3', answer4: '4', prev: 'arrowleft', next: 'arrowright' }
+    }, state.settings || {});
+    this.settings.shortcuts = Object.assign({ answer1: '1', answer2: '2', answer3: '3', answer4: '4', prev: 'arrowleft', next: 'arrowright' }, (state.settings && state.settings.shortcuts) || {});
+
+    this.momentum = Object.assign({ correctStreak: 0, accuracyStreak: 0, noRushStreak: 0, badges: [] }, state.momentum || {});
+    this.trendHistory = Array.isArray(state.trendHistory) ? state.trendHistory : [];
+
+    while (this.answers.length < this.questions.length) this.answers.push(-1);
+    while (this.revealed.length < this.questions.length) this.revealed.push(false);
+    while (this.explanationViewed.length < this.questions.length) this.explanationViewed.push(false);
+    while (this.bookmarked.length < this.questions.length) this.bookmarked.push(false);
+
+    this.saveState();
+    this.applyAppearanceSettings();
+    this.renderQuestionList();
+    this.importScreen(false);
+    this.questionScreen(true);
+    this.reviewScreen(false);
+    this.showQuestion(this.currentIndex);
+    this.updateUI();
+  },
   loadState() {
     try { const raw = localStorage.getItem('sat_quiz_state'); if (raw) { const d = JSON.parse(raw); this.questions = d.questions || []; this.answers = d.answers || []; this.revealed = d.revealed || []; this.explanationViewed = d.explanationViewed || []; this.bookmarked = d.bookmarked || []; this.currentIndex = d.currentIndex || 0; this.pdfLoaded = d.pdfLoaded || false; this.pdfName = d.pdfName || ''; this.settings = Object.assign({ antiClickThrough: false, antiClickSensitivity: 'standard', autoContinueOnCorrect: false, autoContinueDelayMs: 500, theme: 'dark', dyslexiaFont: false, shortcuts: { answer1: '1', answer2: '2', answer3: '3', answer4: '4', prev: 'arrowleft', next: 'arrowright' } }, d.settings || {}); this.settings.shortcuts = Object.assign({ answer1: '1', answer2: '2', answer3: '3', answer4: '4', prev: 'arrowleft', next: 'arrowright' }, (d.settings && d.settings.shortcuts) || {}); this.momentum = Object.assign({ correctStreak: 0, accuracyStreak: 0, noRushStreak: 0, badges: [] }, d.momentum || {}); this.trendHistory = Array.isArray(d.trendHistory) ? d.trendHistory : []; } } catch(e) {}
   },

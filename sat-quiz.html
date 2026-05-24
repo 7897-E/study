@@ -236,6 +236,21 @@
     </div>
     <div class="settings-row">
       <div>
+        <div class="settings-title">Export Quiz + Progress</div>
+        <div class="settings-subtitle">Download your current questions and progress as a JSON file.</div>
+      </div>
+      <button class="btn btn-sm" id="exportStateBtn" onclick="SAT_APP.exportSession()">Export</button>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Import Quiz + Progress</div>
+        <div class="settings-subtitle">Load a previously exported JSON progress file.</div>
+      </div>
+      <button class="btn btn-sm" id="importStateBtn" onclick="SAT_APP.importSession()">Import</button>
+    </div>
+    <input type="file" id="stateFileInput" accept=".json" style="display:none" onchange="SAT_APP.handleImportStateFile(event)">
+    <div class="settings-row">
+      <div>
         <div class="settings-title">Theme</div>
         <div class="settings-subtitle">Switch between dark and light mode.</div>
       </div>
