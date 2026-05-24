@@ -51,6 +51,7 @@ const SAT_APP = {
 
   init() {
     this.loadState();
+    this.loadInjectedQuizIfAvailable();
     this.applyAppearanceSettings();
     this.setupDragDrop();
     this.setupSidebarToggle();
@@ -103,6 +104,87 @@ const SAT_APP = {
   },
   loadState() {
     try { const raw = localStorage.getItem('sat_quiz_state'); if (raw) { const d = JSON.parse(raw); this.questions = d.questions || []; this.answers = d.answers || []; this.revealed = d.revealed || []; this.explanationViewed = d.explanationViewed || []; this.bookmarked = d.bookmarked || []; this.currentIndex = d.currentIndex || 0; this.pdfLoaded = d.pdfLoaded || false; this.pdfName = d.pdfName || ''; this.settings = Object.assign({ antiClickThrough: false, antiClickSensitivity: 'standard', autoContinueOnCorrect: false, autoContinueDelayMs: 500, theme: 'dark', dyslexiaFont: false, shortcuts: { answer1: '1', answer2: '2', answer3: '3', answer4: '4', prev: 'arrowleft', next: 'arrowright' } }, d.settings || {}); this.settings.shortcuts = Object.assign({ answer1: '1', answer2: '2', answer3: '3', answer4: '4', prev: 'arrowleft', next: 'arrowright' }, (d.settings && d.settings.shortcuts) || {}); this.momentum = Object.assign({ correctStreak: 0, accuracyStreak: 0, noRushStreak: 0, badges: [] }, d.momentum || {}); this.trendHistory = Array.isArray(d.trendHistory) ? d.trendHistory : []; } } catch(e) {}
+  },
+  loadInjectedQuizIfAvailable() {
+    try {
+      const raw = localStorage.getItem('sat_quiz_injected');
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      localStorage.removeItem('sat_quiz_injected');
+      const incoming = Array.isArray(payload?.questions) ? payload.questions : [];
+      if (!incoming.length) return;
+      this.questions = incoming.map((q, i) => {
+        const options = Array.isArray(q.options) ? q.options.slice(0, 4) : [];
+        while (options.length < 4) options.push(`Option ${String.fromCharCode(65 + options.length)}`);
+        const cIdx = Math.max(0, Math.min(3, Number(q.correctIdx)));
+        return {
+          num: Number(q.num || (i + 1)),
+          text: String(q.text || `Question ${i + 1}`),
+          options,
+          optionLetters: ['A', 'B', 'C', 'D'],
+          correctIdx: cIdx,
+          correctAnswer: ['A', 'B', 'C', 'D'][cIdx],
+          explanation: String(q.explanation || 'No explanation provided.'),
+          domain: String(q.domain || ''),
+          skill: String(q.skill || ''),
+          difficulty: String(q.difficulty || '')
+        };
+      });
+      this.answers = new Array(this.questions.length).fill(-1);
+      this.revealed = new Array(this.questions.length).fill(false);
+      this.explanationViewed = new Array(this.questions.length).fill(false);
+      this.bookmarked = new Array(this.questions.length).fill(false);
+      this.currentIndex = 0;
+      this.pdfLoaded = true;
+      this.pdfName = String(payload?.title || 'AI SAT Quiz');
+      this.saveState();
+    } catch (e) {}
+  },
+
+  getScoreSummary() {
+    const total = this.questions.length;
+    const answered = this.answers.filter(a => a !== -1).length;
+    const correct = this.answers.reduce((sum, a, i) => sum + (a !== -1 && a === this.questions[i].correctIdx ? 1 : 0), 0);
+    const wrong = answered - correct;
+    const accuracy = answered > 0 ? Math.round((correct / answered) * 100) : 0;
+    return { total, answered, correct, wrong, accuracy };
+  },
+
+  finishAndSendToAI() {
+    const score = this.getScoreSummary();
+    const details = this.questions.map((q, i) => {
+      const userIdx = this.answers[i];
+      const userAnswer = userIdx === -1 ? 'Unanswered' : ((q.optionLetters && q.optionLetters[userIdx]) || ['A','B','C','D'][userIdx] || '?');
+      const correctAnswer = q.correctAnswer || ((q.optionLetters && q.optionLetters[q.correctIdx]) || ['A','B','C','D'][q.correctIdx] || '?');
+      return {
+        question: String(q.text || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+        userAnswer,
+        correctAnswer,
+        isCorrect: userIdx !== -1 && userIdx === q.correctIdx
+      };
+    });
+    const payload = {
+      type: 'sat_quiz_finished',
+      title: this.pdfName || 'SAT Quiz',
+      score,
+      details
+    };
+    let sent = false;
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(payload, '*');
+        sent = true;
+      }
+    } catch (e) {}
+    try {
+      localStorage.setItem('sat_quiz_finished_payload', JSON.stringify(payload));
+    } catch (e) {}
+    this.toast(sent ? 'Score sent to AI chat. Closing quiz tab...' : 'Could not find opener chat tab to send score.', sent ? 'success' : 'warning');
+    if (sent) {
+      setTimeout(() => {
+        try { window.close(); } catch (e) {}
+      }, 500);
+    }
   },
   clearState() { localStorage.removeItem('sat_quiz_state'); this.questions = []; this.answers = []; this.revealed = []; this.explanationViewed = []; this.bookmarked = []; this.currentIndex = 0; this.pdfLoaded = false; this.pdfName = ''; this.resetMomentum(); },
   resetMomentum() {
