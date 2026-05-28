@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Prism</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6C5CE7">
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- DOMPurify for XSS sanitization -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3"></script>
 </head>
 <body>
 
@@ -358,10 +364,129 @@
   </div>
 </div>
 
-<script src="api.js"></script>
+<!-- Prism Core Modules -->
+<script src="supabase.js?v=1"></script>
+<script src="auth.js?v=1"></script>
+<script src="storage.js?v=1"></script>
+<script src="sync.js?v=1"></script>
 
+<!-- Existing App Scripts -->
+<script src="api.js"></script>
 <script src="models.js"></script>
 <script src="offlineapi/offline-api.js"></script>
 <script src="app.js"></script>
+
+<!-- Prism Boot Sequence -->
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  // Supabase credentials — REPLACE THESE with your actual values
+  const SUPABASE_URL = 'https://tfccuwwxtynquprbqanf.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmY2N1d3d4dHlucXVwcmJxYW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5OTAwODgsImV4cCI6MjA5NTU2NjA4OH0.UNuA-blpnrJg0VFB6Ny_RUzfBub_RSUlbnnbJL5BRXI';
+
+  try {
+    // 1. Init Supabase client
+    await prismSupabase.init(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log('[Prism] Supabase initialized');
+
+    // 2. Init Auth (listens for session changes)
+    prismAuth.init();
+    console.log('[Prism] Auth initialized');
+
+    // 3. Init IndexedDB storage
+    await prismStorage.initDB();
+    console.log('[Prism] Storage initialized');
+
+    // 4. Init Sync manager
+    prismSync.init();
+    console.log('[Prism] Sync initialized');
+
+    // 5. Listen for auth changes to update app UI
+    window.addEventListener('prism:auth-change', (e) => {
+      const { session } = e.detail;
+      const user = session?.user || null;
+      if (typeof app !== 'undefined' && app.handleAuthChange) {
+        app.handleAuthChange(user, session);
+      }
+      console.log('[Prism] Auth change:', user ? user.email : 'signed out');
+    });
+
+    // 6. Trigger initial auth check
+    const session = await prismSupabase.getSession();
+    if (session?.user) {
+      window.dispatchEvent(new CustomEvent('prism:auth-change', {
+        detail: { user: session.user, session }
+      }));
+    }
+
+    console.log('[Prism] Boot complete ✓');
+  } catch (err) {
+    console.error('[Prism] Boot error:', err);
+    // App still works offline without Supabase
+    console.log('[Prism] Continuing in offline mode...');
+  }
+});
+</script>
+
+<!-- ==============================
+     Authentication Modal (Sign In / Sign Up)
+     ============================== -->
+<div id="authModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2>Sign In / Sign Up</h2>
+    <div class="tabs">
+      <button class="tab active" data-tab="signin">Sign In</button>
+      <button class="tab" data-tab="signup">Sign Up</button>
+    </div>
+    <div class="tab-content" id="signinTab">
+      <input type="email" id="signinEmail" placeholder="Email" class="input" />
+      <input type="password" id="signinPassword" placeholder="Password" class="input" />
+      <button class="btn" onclick="handleSignIn()">Sign In</button>
+    </div>
+    <div class="tab-content" id="signupTab" style="display:none">
+      <input type="email" id="signupEmail" placeholder="Email" class="input" />
+      <input type="password" id="signupPassword" placeholder="Password" class="input" />
+      <input type="text" id="signupDisplayName" placeholder="Display Name" class="input" />
+      <button class="btn" onclick="handleSignUp()">Sign Up</button>
+    </div>
+    <button class="btn" style="margin-top:10px;opacity:0.6" onclick="document.getElementById('authModal').style.display='none'">Close</button>
+  </div>
+</div>
+
+<script>
+// Simple tab switching for auth modal
+document.querySelectorAll('#authModal .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('#authModal .tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.getAttribute('data-tab');
+    document.getElementById('signinTab').style.display = target === 'signin' ? 'block' : 'none';
+    document.getElementById('signupTab').style.display = target === 'signup' ? 'block' : 'none';
+  });
+});
+
+async function handleSignIn() {
+  const email = document.getElementById('signinEmail').value.trim();
+  const password = document.getElementById('signinPassword').value;
+  try {
+    await prismAuth.signIn(email, password);
+    document.getElementById('authModal').style.display = 'none';
+  } catch (e) {
+    alert('Sign‑in failed: ' + e.message);
+  }
+}
+
+async function handleSignUp() {
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  const displayName = document.getElementById('signupDisplayName').value.trim();
+  try {
+    await prismAuth.signUp(email, password, displayName);
+    document.getElementById('authModal').style.display = 'none';
+  } catch (e) {
+    alert('Sign‑up failed: ' + e.message);
+  }
+}
+</script>
+
 </body>
 </html>
