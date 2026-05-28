@@ -9,10 +9,13 @@ const SAT_APP = {
   pdfLoaded: false,
   pdfName: '',
   reviewFilter: 'all',
+  highlightMode: false,
+  eraserMode: false,
   settings: {
     antiClickThrough: false,
     antiClickSensitivity: 'standard',
     autoContinueOnCorrect: false,
+    twoPassRandomRetakeNonCorrect: false,
     autoContinueDelayMs: 500,
     theme: 'dark',
     dyslexiaFont: false,
@@ -56,6 +59,7 @@ const SAT_APP = {
     this.setupDragDrop();
     this.setupSidebarToggle();
     this.setupKeyboardShortcuts();
+    this.setupHighlighting();
     if (this.questions.length > 0) {
       this.renderQuestionList();
       this.showQuestion(0);
@@ -63,6 +67,127 @@ const SAT_APP = {
       this.questionScreen(true);
     }
     this.updateUI();
+  },
+
+  setupHighlighting() {
+    const questionContent = document.getElementById('questionContent');
+    const menu = document.getElementById('highlightContextMenu');
+    if (!questionContent) return;
+    questionContent.addEventListener('mouseup', () => {
+      if (!this.highlightMode) return;
+      this.applyHighlightFromSelection();
+    });
+    questionContent.addEventListener('click', (e) => {
+      if (!this.eraserMode) return;
+      const hl = e.target && e.target.closest ? e.target.closest('.temp-highlight') : null;
+      if (hl) this.unwrapHighlight(hl);
+    });
+    questionContent.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.openHighlightContextMenu(e.clientX, e.clientY, e.target);
+    });
+    if (menu) {
+      menu.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('button[data-action]') : null;
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        if (action === 'highlight') this.applyHighlightFromSelection();
+        if (action === 'erase') {
+          const target = this._contextMenuTarget;
+          const hl = target && target.closest ? target.closest('.temp-highlight') : null;
+          if (hl) this.unwrapHighlight(hl);
+          else this.toast('Right-click directly on a highlight to erase it.', 'info');
+        }
+        if (action === 'clear') this.clearHighlightsCurrent();
+        this.closeHighlightContextMenu();
+      });
+    }
+    document.addEventListener('click', (e) => {
+      if (!menu || menu.style.display === 'none') return;
+      if (!menu.contains(e.target)) this.closeHighlightContextMenu();
+    });
+    window.addEventListener('scroll', () => this.closeHighlightContextMenu(), true);
+  },
+
+  openHighlightContextMenu(x, y, targetEl) {
+    const menu = document.getElementById('highlightContextMenu');
+    if (!menu) return;
+    this._contextMenuTarget = targetEl || null;
+    menu.style.display = 'block';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+  },
+
+  closeHighlightContextMenu() {
+    const menu = document.getElementById('highlightContextMenu');
+    if (!menu) return;
+    menu.style.display = 'none';
+    this._contextMenuTarget = null;
+  },
+
+  toggleHighlightMode() {
+    this.highlightMode = !this.highlightMode;
+    if (this.highlightMode && this.eraserMode) this.toggleEraserMode(false);
+    const btn = document.getElementById('toggleHighlightBtn');
+    if (btn) {
+      btn.textContent = this.highlightMode ? 'Highlight: On' : 'Highlight: Off';
+      btn.classList.toggle('active', this.highlightMode);
+    }
+    if (this.highlightMode) {
+      this.toast('Highlight mode on. Select text in the question area.', 'info');
+    }
+  },
+
+  toggleEraserMode(forceValue) {
+    if (typeof forceValue === 'boolean') this.eraserMode = forceValue;
+    else this.eraserMode = !this.eraserMode;
+    if (this.eraserMode && this.highlightMode) this.toggleHighlightMode();
+    const btn = document.getElementById('toggleEraserBtn');
+    if (btn) {
+      btn.textContent = this.eraserMode ? 'Eraser: On' : 'Eraser: Off';
+      btn.classList.toggle('active', this.eraserMode);
+    }
+    if (this.eraserMode) this.toast('Eraser mode on. Click a highlight to remove it.', 'info');
+  },
+
+  applyHighlightFromSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const questionContent = document.getElementById('questionContent');
+    if (!questionContent || !questionContent.contains(range.commonAncestorContainer)) return;
+
+    const mark = document.createElement('span');
+    mark.className = 'temp-highlight';
+    try {
+      const extracted = range.extractContents();
+      mark.appendChild(extracted);
+      range.insertNode(mark);
+      sel.removeAllRanges();
+    } catch (e) {
+      this.toast('Could not highlight that selection. Try a smaller selection.', 'warning');
+    }
+  },
+
+  clearHighlightsCurrent() {
+    const questionContent = document.getElementById('questionContent');
+    if (!questionContent) return;
+    const highlights = questionContent.querySelectorAll('.temp-highlight');
+    highlights.forEach(h => {
+      const parent = h.parentNode;
+      while (h.firstChild) parent.insertBefore(h.firstChild, h);
+      parent.removeChild(h);
+      parent.normalize();
+    });
+    this.toast('Highlights cleared for this question view.', 'info');
+  },
+
+  unwrapHighlight(h) {
+    if (!h || !h.parentNode) return;
+    const parent = h.parentNode;
+    while (h.firstChild) parent.insertBefore(h.firstChild, h);
+    parent.removeChild(h);
+    parent.normalize();
   },
 
   toast(message, type) {
@@ -350,6 +475,8 @@ const SAT_APP = {
     if (sensitivity) sensitivity.value = this.settings.antiClickSensitivity || 'standard';
     const autoContinue = document.getElementById('autoContinueToggle');
     if (autoContinue) autoContinue.checked = !!this.settings.autoContinueOnCorrect;
+    const twoPassRandomRetakeToggle = document.getElementById('twoPassRandomRetakeToggle');
+    if (twoPassRandomRetakeToggle) twoPassRandomRetakeToggle.checked = !!this.settings.twoPassRandomRetakeNonCorrect;
     const autoContinueDelay = document.getElementById('autoContinueDelay');
     if (autoContinueDelay) autoContinueDelay.value = String(this.settings.autoContinueDelayMs || 500);
     const autoContinueDelayValue = document.getElementById('autoContinueDelayValue');
@@ -524,6 +651,13 @@ const SAT_APP = {
     this.settings.autoContinueOnCorrect = !!enabled;
     this.saveState();
     this.toast(enabled ? 'Auto-continue on correct answer enabled.' : 'Auto-continue on correct answer disabled.', 'info');
+  },
+  toggleTwoPassRandomRetake(enabled) {
+    this.settings.twoPassRandomRetakeNonCorrect = !!enabled;
+    this.saveState();
+    this.toast(enabled
+      ? 'Two-Pass random retake mode enabled.'
+      : 'Two-Pass random retake mode disabled.', 'info');
   },
   setAutoContinueDelay(value) {
     const parsed = Number(value);
@@ -1227,6 +1361,54 @@ const SAT_APP = {
   },
 
   startTwoPassReview() {
+    if (this.settings.twoPassRandomRetakeNonCorrect) {
+      const pool = [];
+      for (let i = 0; i < this.questions.length; i++) {
+        const ans = this.answers[i];
+        if (ans === -1 || ans !== this.questions[i].correctIdx) {
+          pool.push({
+            q: this.questions[i],
+            bookmarked: !!this.bookmarked[i]
+          });
+        }
+      }
+
+      if (pool.length === 0) {
+        this.toast('No non-correct questions to retake. Great job!', 'success');
+        return;
+      }
+
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+
+      this.questions = pool.map((item, idx) => ({
+        ...item.q,
+        num: idx + 1
+      }));
+      this.answers = new Array(this.questions.length).fill(-1);
+      this.revealed = new Array(this.questions.length).fill(false);
+      this.explanationViewed = new Array(this.questions.length).fill(false);
+      this.bookmarked = pool.map(item => !!item.bookmarked);
+      this.currentIndex = 0;
+
+      const queue = this.questions.map((_, idx) => idx);
+
+      this.twoPass.enabled = true;
+      this.twoPass.phase = 2;
+      this.twoPass.queue = queue;
+      this.twoPass.pointer = 0;
+
+      this.saveState();
+      this.renderQuestionList();
+      this.reviewScreen(false);
+      this.questionScreen(true);
+      this.goToQuestion(queue[0]);
+      this.toast(`Two-pass retake started: ${queue.length} non-correct questions randomized. Correct questions were removed from this run.`, 'info');
+      return;
+    }
+
     const unanswered = [];
     const retry = [];
     for (let i = 0; i < this.questions.length; i++) {

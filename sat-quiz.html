@@ -100,6 +100,11 @@
         <div class="question-actions">
           <button class="btn btn-sm" id="showExplanationBtn" style="display:none">Show Explanation</button>
         </div>
+        <div id="highlightContextMenu" class="highlight-context-menu" style="display:none">
+          <button type="button" data-action="highlight">Highlight Selection</button>
+          <button type="button" data-action="erase">Erase Highlight</button>
+          <button type="button" data-action="clear">Clear All Highlights</button>
+        </div>
         <div class="explanation-box" id="explanationBox">
           <h4>Explanation</h4>
           <div class="correct-answer-label" id="correctAnswerLabel">Correct answer: A</div>
@@ -206,6 +211,16 @@
       </div>
       <label class="switch">
         <input type="checkbox" id="autoContinueToggle" onchange="SAT_APP.toggleAutoContinue(this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-title">Two-Pass: Random Retake Non-Correct</div>
+        <div class="settings-subtitle">When enabled, Two-Pass review will queue only non-correct questions in random order and reset them so you retake them.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="twoPassRandomRetakeToggle" onchange="SAT_APP.toggleTwoPassRandomRetake(this.checked)">
         <span class="slider"></span>
       </label>
     </div>
