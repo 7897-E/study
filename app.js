@@ -50,6 +50,8 @@ const app = {
     ,voiceRecognition: null
     ,voiceTranscriptFinal: ''
     ,voiceSessionBaseText: ''
+    ,voiceTranscriptInterim: ''
+    ,voiceTranscriptCumulative: ''
   },
 
   TOOL_PROMPT: "IMPORTANT FORMATTING RULES: Use <code>...</code> ONLY for real code snippets, shell commands, config blocks, JSON, or exact tool/API payloads that users may copy/run. Use <copytext>...</copytext> for non-code text the user should copy (emails, templates, prompts, messages, etc.). Do NOT wrap normal prose, summaries, or plain lists in <code> or <copytext>. Keep explanations outside these tags.",
@@ -616,7 +618,9 @@ const app = {
 
       recognition.onstart = () => {
         this.state.isListening = true;
+        this.state.voiceTranscriptInterim = '';
         this.updateVoiceButtonState();
+        this.renderLiveVoiceTranscript();
       };
 
       recognition.onresult = (event) => {
@@ -637,9 +641,11 @@ const app = {
 
         const base = this.state.voiceSessionBaseText || '';
         const finalText = this.state.voiceTranscriptFinal || '';
+        this.state.voiceTranscriptInterim = interim;
         const composedVoice = [finalText, interim].filter(Boolean).join(' ').trim();
         input.value = [base, composedVoice].filter(Boolean).join(base && composedVoice ? ' ' : '').trim();
         this.autoResize(input);
+        this.renderLiveVoiceTranscript();
       };
 
       recognition.onerror = (event) => {
@@ -654,9 +660,9 @@ const app = {
 
       recognition.onend = () => {
         this.state.isListening = false;
-        this.state.voiceTranscriptFinal = '';
-        this.state.voiceSessionBaseText = '';
+        this.state.voiceTranscriptInterim = '';
         this.updateVoiceButtonState();
+        this.renderLiveVoiceTranscript();
       };
 
       this.state.voiceSupported = true;
@@ -696,6 +702,8 @@ const app = {
       const input = document.getElementById('userInput');
       this.state.voiceSessionBaseText = String(input?.value || '').trim();
       this.state.voiceTranscriptFinal = '';
+      this.state.voiceTranscriptInterim = '';
+      this.state.voiceTranscriptCumulative = this.state.voiceSessionBaseText;
       this.state.voiceRecognition.start();
     } catch (e) {
       this.debugLog(`startVoiceInput error: ${e?.message || e}`);
@@ -711,6 +719,18 @@ const app = {
     } catch (e) {
       this.debugLog(`stopVoiceInput error: ${e?.message || e}`);
     }
+  },
+
+  renderLiveVoiceTranscript() {
+    const el = document.getElementById('voiceLive');
+    if (!el) return;
+    const finalText = String(this.state.voiceTranscriptFinal || '').trim();
+    const interimText = String(this.state.voiceTranscriptInterim || '').trim();
+    const base = String(this.state.voiceSessionBaseText || '').trim();
+    const heard = [base, finalText, interimText].filter(Boolean).join(' ').trim();
+    this.state.voiceTranscriptCumulative = heard;
+    el.style.display = 'none';
+    el.textContent = '';
   },
 
   async shutdownOfflineServerIfRunning() {
@@ -1002,14 +1022,103 @@ const app = {
           prismSync.enqueue('chat', chat.id, {
             title: chat.title || 'New Chat',
             messages: Array.isArray(chat.messages) ? chat.messages : [],
-            model: this.state.selectedModel || '',
-            mode: this.state.mode || 'single',
+            model: chat.model || this.state.selectedModel || '',
+            mode: chat.mode || 'single',
             timestamp: Date.now()
           }, 'upsert');
         });
       }
     } catch (_) {}
     this.updateStorageUsage();
+  },
+
+  getUserScopedKey(baseKey, userId) {
+    return `${baseKey}:${userId || 'guest'}`;
+  },
+
+  saveUserScopedSnapshot(userId) {
+    if (!userId) return;
+    try {
+      localStorage.setItem(this.getUserScopedKey('or_chats_user', userId), JSON.stringify(this.state.chats || []));
+      localStorage.setItem(this.getUserScopedKey('or_multi_models_user', userId), JSON.stringify(this.state.multiModels || []));
+      localStorage.setItem(this.getUserScopedKey('or_multi_model_retries_user', userId), JSON.stringify(this.state.multiModelRetries || {}));
+    } catch (_) {}
+  },
+
+  loadUserScopedSnapshot(userId) {
+    if (!userId) return { chats: [], multiModels: [], multiModelRetries: {} };
+    try {
+      return {
+        chats: JSON.parse(localStorage.getItem(this.getUserScopedKey('or_chats_user', userId)) || '[]'),
+        multiModels: JSON.parse(localStorage.getItem(this.getUserScopedKey('or_multi_models_user', userId)) || '[]'),
+        multiModelRetries: JSON.parse(localStorage.getItem(this.getUserScopedKey('or_multi_model_retries_user', userId)) || '{}')
+      };
+    } catch (_) {
+      return { chats: [], multiModels: [], multiModelRetries: {} };
+    }
+  },
+
+  async pullCloudChatsForUser(userId) {
+    if (!userId || typeof prismSupabase === 'undefined') return [];
+    try {
+      const sb = prismSupabase.getClient();
+      if (!sb) return [];
+      const { data, error } = await sb
+        .from('chats')
+        .select('id,title,messages,model,mode,updated_at')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return (Array.isArray(data) ? data : []).map((r) => ({
+        id: r.id,
+        title: r.title || 'New Chat',
+        messages: Array.isArray(r.messages) ? r.messages : [],
+        model: r.model || '',
+        mode: r.mode || 'single',
+        createdAt: r.updated_at || new Date().toISOString(),
+        timestamp: r.updated_at ? new Date(r.updated_at).getTime() : Date.now()
+      }));
+    } catch (e) {
+      this.debugLog(`pullCloudChatsForUser warning: ${e?.message || e}`);
+      return [];
+    }
+  },
+
+  async pullCloudPreferencesForUser(userId) {
+    if (!userId || typeof prismSupabase === 'undefined') return null;
+    try {
+      const sb = prismSupabase.getClient();
+      if (!sb) return null;
+      const { data, error } = await sb
+        .from('profiles')
+        .select('preferences')
+        .eq('id', userId)
+        .single();
+      if (error) throw error;
+      return data?.preferences || null;
+    } catch (_) {
+      return null;
+    }
+  },
+
+  async pushCloudPreferencesForUser(userId) {
+    if (!userId || typeof prismSupabase === 'undefined') return;
+    try {
+      const sb = prismSupabase.getClient();
+      if (!sb) return;
+      await sb
+        .from('profiles')
+        .update({
+          preferences: {
+            multiModels: this.state.multiModels || [],
+            multiModelRetries: this.state.multiModelRetries || {}
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+    } catch (_) {
+      // optional column/path; ignore if schema doesn't include preferences
+    }
   },
 
   showToast(message, type = 'info', duration = 2800) {
@@ -1031,16 +1140,59 @@ const app = {
   },
 
   async handleAuthChange(user, session) {
+    const previousUserId = this.state.user?.id || null;
     const isInitialBootEvent = !this.state.authBootHandled;
     this.state.authBootHandled = true;
     this.state.user = user || null;
+
+    if (!this.state.user && previousUserId) {
+      this.saveUserScopedSnapshot(previousUserId);
+      this.state.chats = [];
+      this.state.currentChatId = null;
+      this.state.multiModels = [];
+      this.state.multiModelRetries = {};
+      localStorage.removeItem('or_multi_models');
+      localStorage.removeItem('or_multi_model_retries');
+      this.persistChats();
+      this.renderChatList();
+      this.renderMessages();
+      this.renderMultiModelList();
+      this.showToast('Signed out. Local view cleared until next sign-in.', 'info', 2200);
+      return;
+    }
+
     if (this.state.user) {
       if (isInitialBootEvent) {
         this.showToast(`Connected as ${this.state.user.email || 'user'}`, 'success', 2200);
       }
       try {
+        const scoped = this.loadUserScopedSnapshot(this.state.user.id);
+        const cloudChats = await this.pullCloudChatsForUser(this.state.user.id);
+        this.state.chats = cloudChats.length ? cloudChats : (scoped.chats || []);
+        this.state.currentChatId = this.state.chats[0]?.id || null;
+        this.persistChats();
+
+        const cloudPrefs = await this.pullCloudPreferencesForUser(this.state.user.id);
+        const localModels = Array.isArray(scoped.multiModels) ? scoped.multiModels.filter(Boolean) : [];
+        const cloudModels = Array.isArray(cloudPrefs?.multiModels) ? cloudPrefs.multiModels.filter(Boolean) : [];
+        const localRetries = (scoped.multiModelRetries && typeof scoped.multiModelRetries === 'object') ? scoped.multiModelRetries : {};
+        const cloudRetries = (cloudPrefs?.multiModelRetries && typeof cloudPrefs.multiModelRetries === 'object') ? cloudPrefs.multiModelRetries : {};
+
+        // Local is authoritative when present: override cloud list with local list.
+        const useLocalAsSourceOfTruth = localModels.length > 0;
+        this.state.multiModels = useLocalAsSourceOfTruth ? [...new Set(localModels)] : [...new Set(cloudModels)];
+        this.state.multiModelRetries = useLocalAsSourceOfTruth ? { ...localRetries } : { ...cloudRetries };
+        localStorage.setItem('or_multi_models', JSON.stringify(this.state.multiModels));
+        localStorage.setItem('or_multi_model_retries', JSON.stringify(this.state.multiModelRetries));
+        this.renderMultiModelList();
+        this.renderChatList();
+        this.renderMessages();
+
         // Queue all existing chats for cloud backup and force a sync pass
         this.persistChats();
+        this.saveUserScopedSnapshot(this.state.user.id);
+        // Force cloud preferences to match local authoritative model list.
+        await this.pushCloudPreferencesForUser(this.state.user.id);
         if (typeof prismStorage !== 'undefined' && prismStorage.syncLocalFiles) {
           await prismStorage.syncLocalFiles();
         }
@@ -1051,6 +1203,10 @@ const app = {
         this.debugLog(`handleAuthChange sync warning: ${e?.message || e}`);
       }
     }
+  },
+
+  updateUserState(user) {
+    this.state.user = user || null;
   },
 
   updateStorageUsage() {
@@ -1102,6 +1258,7 @@ const app = {
         localStorage.setItem('or_multi_model_retries', JSON.stringify(this.state.multiModelRetries));
       }
       this.renderMultiModelList();
+      if (this.state.user?.id) this.pushCloudPreferencesForUser(this.state.user.id);
     }
     document.getElementById('multiModelDropdown')?.classList.remove('open');
     const inpt = document.getElementById('multiModelSearch'); if (inpt) inpt.value = '';
@@ -1114,11 +1271,13 @@ const app = {
     localStorage.setItem('or_multi_models', JSON.stringify(this.state.multiModels));
     localStorage.setItem('or_multi_model_retries', JSON.stringify(this.state.multiModelRetries));
     this.renderMultiModelList();
+    if (this.state.user?.id) this.pushCloudPreferencesForUser(this.state.user.id);
   },
 
   setMultiModelRetry(modelId, enabled) {
     this.state.multiModelRetries[modelId] = !!enabled;
     localStorage.setItem('or_multi_model_retries', JSON.stringify(this.state.multiModelRetries));
+    if (this.state.user?.id) this.pushCloudPreferencesForUser(this.state.user.id);
   },
 
   moveMultiModel(modelId, direction) {
@@ -1131,6 +1290,7 @@ const app = {
     this.state.multiModels = arr;
     localStorage.setItem('or_multi_models', JSON.stringify(this.state.multiModels));
     this.renderMultiModelList();
+    if (this.state.user?.id) this.pushCloudPreferencesForUser(this.state.user.id);
   },
 
   toggleRearrangeMode() {
@@ -1156,6 +1316,7 @@ const app = {
     this.state.multiModels = arr;
     localStorage.setItem('or_multi_models', JSON.stringify(this.state.multiModels));
     this.renderMultiModelList();
+    if (this.state.user?.id) this.pushCloudPreferencesForUser(this.state.user.id);
   },
 
   renderMultiModelList() {
@@ -1362,18 +1523,29 @@ const app = {
 
   newChat() {
     this.debugLog('newChat()');
-    const chat = { id: String(Date.now()), title: 'New Chat', createdAt: new Date().toISOString(), messages: [] };
+    const chat = {
+      id: String(Date.now()),
+      title: 'New Chat',
+      createdAt: new Date().toISOString(),
+      messages: [],
+      mode: this.state.mode || 'single',
+      model: this.state.selectedModel || ''
+    };
     this.state.chats.unshift(chat); this.state.currentChatId = chat.id; this.persistChats(); this.renderChatList(); this.renderMessages();
   },
 
   renderChatList() {
     const list = document.getElementById('chatList'); if (!list) return; list.innerHTML = '';
     this.state.chats.forEach((chat) => {
+      const safeDate = chat?.createdAt ? new Date(chat.createdAt) : null;
+      const dateText = (safeDate && !Number.isNaN(safeDate.getTime()))
+        ? safeDate.toLocaleDateString()
+        : '—';
       const item = document.createElement('div'); item.className = `chat-item${chat.id===this.state.currentChatId?' active':''}`;
       item.innerHTML = `
         <div class="chat-main" title="${chat.title.replace(/"/g, '"')}">
           <span class="chat-title">${chat.title}</span>
-          <span class="chat-date">${new Date(chat.createdAt).toLocaleDateString()}</span>
+          <span class="chat-date">${dateText}</span>
         </div>
         <div class="chat-menu-wrap">
           <button class="chat-menu-btn" aria-label="Chat actions">⋯</button>
@@ -1536,8 +1708,10 @@ const app = {
     chat.messages.forEach((msg) => {
       const div = document.createElement('div'); div.className = `message ${msg.role}`;
       if (msg.role === 'assistant' && msg.htmlTable && !msg.compactHtml) div.classList.add('full-width');
+      const box = document.createElement('div');
+      box.className = 'message-box';
       if (msg.role === 'assistant' && this.state.transparency && msg.model) {
-        const label = document.createElement('div'); label.className='model-label'; label.textContent = `${msg.model}`; div.appendChild(label);
+        const label = document.createElement('div'); label.className='model-label'; label.textContent = `${msg.model}`; box.appendChild(label);
       }
       if (msg.variants && Array.isArray(msg.variants) && msg.variants.length) {
         const wrap = document.createElement('div');
@@ -1565,12 +1739,13 @@ const app = {
         this.renderMessageContent(body, current.content || '');
         wrap.appendChild(nav);
         wrap.appendChild(body);
-        div.appendChild(wrap);
+        box.appendChild(wrap);
       } else if (msg.htmlTable) {
-        const wrap = document.createElement('div'); wrap.innerHTML = msg.content; div.appendChild(wrap);
+        const wrap = document.createElement('div'); wrap.innerHTML = msg.content; box.appendChild(wrap);
       } else {
-        const body = document.createElement('div'); this.renderMessageContent(body, msg.content || ''); div.appendChild(body);
+        const body = document.createElement('div'); this.renderMessageContent(body, msg.content || ''); box.appendChild(body);
       }
+      div.appendChild(box);
       messages.appendChild(div);
     });
     this.scrollToBottomIfNear(near);
@@ -2044,6 +2219,11 @@ const app = {
     }
     if (slashResult?.transformedText) text = slashResult.transformedText;
 
+    if (!this.state.offline && !this.state.user) {
+      this.addSystemNotice('Please sign in to use online model capabilities.');
+      if (typeof openAuthModal === 'function') openAuthModal();
+      return;
+    }
     if (!this.state.offline && !this.state.apiKey) { document.getElementById('apiModal').style.display='flex'; this.addSystemNotice('Add API key first.'); return; }
     if (!this.state.selectedModel) { this.addSystemNotice('Pick a chat model in Settings first.'); return; }
 
@@ -2065,6 +2245,8 @@ const app = {
       attachments: (this.state.pendingUploads || []).map((f) => ({ name: f.name, size: f.size, type: f.type }))
     });
     if (chat.title==='New Chat') chat.title = text.slice(0,40) || 'New Chat';
+    chat.mode = this.state.mode || 'single';
+    chat.model = this.state.selectedModel || chat.model || '';
     input.value='';
     this.updateSlashMenu('');
     this.clearPendingUploads();
@@ -2673,7 +2855,10 @@ const app = {
         const data = JSON.parse(reader.result);
         if (!data || typeof data !== 'object' || !data.localStorage || typeof data.localStorage !== 'object') throw new Error('Invalid format');
         if (!confirm('Import all data and overwrite current settings/chats?')) return;
+        const authKeyPattern = /^sb-.*-auth-token$/i;
         Object.entries(data.localStorage).forEach(([k, v]) => {
+          // Never import auth/session tokens so current user stays signed in.
+          if (authKeyPattern.test(String(k || ''))) return;
           if (typeof v === 'string') localStorage.setItem(k, v);
           else if (v == null) localStorage.removeItem(k);
           else localStorage.setItem(k, String(v));
@@ -2709,6 +2894,9 @@ const app = {
         this.updateTokenStats();
         this.updateStorageUsage();
         await this.fetchAndCacheModels();
+        if (this.state.user?.id && typeof prismSync !== 'undefined' && prismSync.forceSync) {
+          await prismSync.forceSync();
+        }
         this.debugLog('importAllData:  complete');
         alert('All data imported successfully.');
       } catch (err) { alert(`Import failed: ${err?.message || err}`); }

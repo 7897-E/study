@@ -170,14 +170,26 @@ const prismSync = (() => {
       }
     }
 
-    const updates = upsertItems.map(item => ({
+    // Deduplicate by chat id so a single upsert statement never contains
+    // multiple rows with the same conflict key (id), which causes Postgres 21000.
+    const latestByChatId = new Map();
+    upsertItems.forEach((item) => {
+      const id = item?.entityId;
+      if (!id) return;
+      const prev = latestByChatId.get(id);
+      if (!prev || Number(item.timestamp || 0) >= Number(prev.timestamp || 0)) {
+        latestByChatId.set(id, item);
+      }
+    });
+
+    const updates = Array.from(latestByChatId.values()).map(item => ({
       id: item.entityId,
       user_id: user?.id || null,
       title: item.data.title || 'New Chat',
       messages: item.data.messages || [],
       model: item.data.model,
       mode: item.data.mode,
-      updated_at: new Date(item.data.timestamp || Date.now()).toISOString()
+      updated_at: new Date(item.data.timestamp || item.timestamp || Date.now()).toISOString()
     }));
 
     if (updates.length) {

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prism Admin</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c5cff">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1"></script>
+<script src="supabase.config.local.js"></script>
+<script src="supabase.js"></script>
+<script src="auth.js"></script>
+<style>
+  body { overflow-y: auto; height: auto; }
+  .admin-shell { max-width: 1180px; margin: 0 auto; padding: 24px; position: relative; z-index: 1; }
+  .admin-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .admin-card { border:1px solid var(--border); background:var(--bg-glass); border-radius:14px; padding:16px; margin-bottom:12px; }
+  .admin-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+  .admin-k { color: var(--text-secondary); font-size:.8em; }
+  .admin-v { color: var(--text-primary); font-weight:600; margin-top:4px; }
+  .admin-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .admin-subhead { margin: 0 0 10px; font-size: 1.02em; }
+  .admin-two-col { display:grid; grid-template-columns: 1.05fr 1fr; gap:12px; }
+  .admin-table-wrap { overflow:auto; border:1px solid var(--border); border-radius:12px; }
+  .admin-table { width:100%; border-collapse: collapse; min-width: 760px; }
+  .admin-table th, .admin-table td { border-bottom:1px solid var(--border); padding:10px; text-align:left; font-size:.86em; }
+  .admin-table th { color: var(--text-secondary); font-weight:600; background: var(--bg-tertiary); }
+  .pill { display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:.75em; border:1px solid var(--border); }
+  .pill.ok { color:#b9f5cd; border-color:rgba(46,159,85,.6); background:rgba(46,159,85,.18); }
+  .pill.warn { color:#ffd8a8; border-color:rgba(255,152,0,.55); background:rgba(255,152,0,.16); }
+  .pill.bad { color:#ffc2cf; border-color:rgba(233,91,118,.65); background:rgba(233,91,118,.18); }
+  .inline-inputs { display:grid; gap:8px; }
+  .muted-mini { font-size:.78em; color:var(--text-secondary); }
+  .admin-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 3000; }
+  .admin-modal { width: min(92vw, 420px); border:1px solid var(--border); background:var(--bg-secondary); border-radius:14px; padding:16px; }
+  .admin-modal h3 { margin: 0 0 8px; }
+  .admin-modal input { width: 100%; margin-top: 8px; }
+  @media (max-width: 950px) { .admin-two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div class="admin-head">
+      <div>
+        <div class="logo">Prism Admin</div>
+        <p class="hint" id="adminStatus">Checking access…</p>
+      </div>
+      <div class="admin-actions">
+        <a class="btn btn-sm" href="./index.html">Home</a>
+        <a class="btn btn-sm" href="./docs.html">Docs</a>
+        <a class="btn btn-sm landing-auth-btn" href="./chat.html">Open App</a>
+      </div>
+    </div>
+
+    <div id="adminDenied" class="admin-card" style="display:none">
+      <h2>Access Denied</h2>
+      <p class="hint">You must be signed in with an admin profile to use this page.</p>
+      <div class="admin-actions" style="margin-top:10px">
+        <a class="btn btn-sm" href="./chat.html?auth=1">Sign In</a>
+      </div>
+    </div>
+
+    <div id="adminContent" style="display:none">
+      <div class="admin-grid">
+        <div class="admin-card">
+          <div class="admin-k">Signed-in User</div>
+          <div class="admin-v" id="adminUserEmail">-</div>
+        </div>
+        <div class="admin-card">
+          <div class="admin-k">Role</div>
+          <div class="admin-v" id="adminRole">-</div>
+        </div>
+        <div class="admin-card">
+          <div class="admin-k">Supabase URL</div>
+          <div class="admin-v" id="adminSbUrl">-</div>
+        </div>
+        <div class="admin-card">
+          <div class="admin-k">Storage Bucket</div>
+          <div class="admin-v" id="adminBucket">-</div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <h2 style="margin-bottom:10px">Quick Admin Actions</h2>
+        <div class="admin-actions">
+          <button class="btn btn-sm" id="refreshStatusBtn">Refresh Status</button>
+          <button class="btn btn-sm" id="signOutBtn">Sign Out</button>
+        </div>
+        <p class="hint" id="adminActionHint" style="margin-top:10px">Ready.</p>
+      </div>
+
+      <div class="admin-two-col">
+        <div class="admin-card">
+          <h3 class="admin-subhead">Platform Configuration</h3>
+          <div class="inline-inputs">
+            <label class="admin-k">Supabase URL</label>
+            <input id="cfgUrl" type="text" placeholder="https://...supabase.co">
+            <label class="admin-k">Supabase Anon Key</label>
+            <input id="cfgAnonKey" type="password" placeholder="eyJ...">
+            <label class="admin-k">Storage Bucket</label>
+            <input id="cfgBucket" type="text" placeholder="user-files">
+          </div>
+          <div class="admin-actions" style="margin-top:10px">
+            <button class="btn btn-sm" id="testCfgBtn">Test Connection</button>
+            <button class="btn btn-sm landing-auth-btn" id="saveCfgBtn">Save Config</button>
+          </div>
+          <p class="muted-mini" id="cfgHint" style="margin-top:10px">You can update live app config here.</p>
+        </div>
+
+        <div class="admin-card">
+          <h3 class="admin-subhead">Dashboard Health</h3>
+          <div class="admin-grid">
+            <div>
+              <div class="admin-k">Profiles Count</div>
+              <div class="admin-v" id="metricProfiles">-</div>
+            </div>
+            <div>
+              <div class="admin-k">Admins Count</div>
+              <div class="admin-v" id="metricAdmins">-</div>
+            </div>
+            <div>
+              <div class="admin-k">Config Status</div>
+              <div class="admin-v" id="metricConfig"><span class="pill warn">Unknown</span></div>
+            </div>
+            <div>
+              <div class="admin-k">Last Refresh</div>
+              <div class="admin-v" id="metricRefresh">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <h3 class="admin-subhead" style="margin:0">User Management</h3>
+          <div class="admin-actions">
+            <input id="userSearch" type="text" placeholder="Search by display name" style="max-width:260px">
+            <button class="btn btn-sm" id="refreshUsersBtn">Refresh Users</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Display Name</th>
+                <th>ID</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr><td colspan="6" class="hint">Loading users…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted-mini" style="margin-top:8px">Revoke access sets <code>set_disabled=true</code> and removes admin. To truly list every user, ensure admin RLS policy allows selecting all rows in <code>profiles</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="adminModalOverlay" class="admin-modal-overlay" aria-hidden="true">
+    <div class="admin-modal">
+      <h3 id="adminModalTitle">Confirm</h3>
+      <p class="hint" id="adminModalMessage">Are you sure?</p>
+      <input id="adminModalInput" type="text" style="display:none" />
+      <div class="admin-actions" style="margin-top:12px;justify-content:flex-end">
+        <button class="btn btn-sm" id="adminModalCancelBtn">Cancel</button>
+        <button class="btn btn-sm landing-auth-btn" id="adminModalOkBtn">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+function adminModalAsk({ title = 'Confirm', message = '', okText = 'OK', cancelText = 'Cancel', withInput = false, inputValue = '' }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('adminModalOverlay');
+    const titleEl = document.getElementById('adminModalTitle');
+    const msgEl = document.getElementById('adminModalMessage');
+    const inputEl = document.getElementById('adminModalInput');
+    const okBtn = document.getElementById('adminModalOkBtn');
+    const cancelBtn = document.getElementById('adminModalCancelBtn');
+    if (!overlay || !titleEl || !msgEl || !inputEl || !okBtn || !cancelBtn) return resolve({ ok: false, value: '' });
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+    inputEl.style.display = withInput ? '' : 'none';
+    inputEl.value = withInput ? String(inputValue || '') : '';
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+
+    const close = (result) => {
+      overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(result);
+    };
+
+    okBtn.onclick = () => close({ ok: true, value: inputEl.value });
+    cancelBtn.onclick = () => close({ ok: false, value: inputEl.value });
+  });
+}
+
+(() => {
+  const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+  const apply = () => {
+    const isLight = !!(mq && mq.matches);
+    document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isLight ? '#f3f6fc' : '#0f1116');
+  };
+  apply();
+  if (mq && mq.addEventListener) mq.addEventListener('change', apply);
+})();
+
+async function loadAdminState() {
+  const status = document.getElementById('adminStatus');
+  const denied = document.getElementById('adminDenied');
+  const content = document.getElementById('adminContent');
+  const hint = document.getElementById('adminActionHint');
+  try {
+    const url = window.PRISM_SUPABASE_CONFIG?.url || '';
+    const key = window.PRISM_SUPABASE_CONFIG?.publishableKey || '';
+    await prismSupabase.init(url, key);
+    await prismAuth.init();
+
+    const session = await prismAuth.getSession();
+    const user = session?.user || null;
+    const isAdmin = await prismAuth.isAdmin();
+
+    if (!user || !isAdmin) {
+      status.textContent = !user ? 'Not signed in.' : 'Signed in, but not admin.';
+      denied.style.display = 'block';
+      content.style.display = 'none';
+      return;
+    }
+
+    const cfg = prismSupabase.getConfig();
+    const appCfg = await prismSupabase.getAppConfig();
+    document.getElementById('adminUserEmail').textContent = user.email || '(no email)';
+    document.getElementById('adminRole').textContent = 'Admin';
+    document.getElementById('adminSbUrl').textContent = cfg.url || '-';
+    document.getElementById('adminBucket').textContent = cfg.bucket || 'user-files';
+    document.getElementById('cfgUrl').value = appCfg?.supabase_url || cfg.url || '';
+    document.getElementById('cfgAnonKey').value = appCfg?.supabase_anon_key || cfg.key || '';
+    document.getElementById('cfgBucket').value = appCfg?.storage_bucket || cfg.bucket || 'user-files';
+    status.textContent = 'Admin access granted.';
+    denied.style.display = 'none';
+    content.style.display = 'block';
+    hint.textContent = 'Ready.';
+    await loadDashboardMetrics();
+    await loadUsersTable();
+  } catch (e) {
+    status.textContent = 'Admin check failed.';
+    denied.style.display = 'block';
+    content.style.display = 'none';
+  }
+}
+
+let _usersCache = [];
+
+async function loadDashboardMetrics() {
+  const sb = prismSupabase.getClient();
+  const now = new Date();
+  document.getElementById('metricRefresh').textContent = now.toLocaleString();
+  if (!sb) return;
+  try {
+    const { data: profiles } = await sb.from('profiles').select('id,admin');
+    const total = Array.isArray(profiles) ? profiles.length : 0;
+    const admins = (profiles || []).filter((p) => p?.admin === true).length;
+    document.getElementById('metricProfiles').textContent = String(total);
+    document.getElementById('metricAdmins').textContent = String(admins);
+    document.getElementById('metricConfig').innerHTML = '<span class="pill ok">Connected</span>';
+  } catch (_) {
+    document.getElementById('metricConfig').innerHTML = '<span class="pill bad">Limited</span>';
+  }
+}
+
+function renderUsersTable(rows) {
+  const body = document.getElementById('usersTableBody');
+  if (!body) return;
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="hint">No users found.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map((u) => {
+    const role = u.admin ? '<span class="pill ok">Admin</span>' : '<span class="pill warn">User</span>';
+    const status = u.set_disabled ? '<span class="pill bad">Disabled</span>' : '<span class="pill ok">Active</span>';
+    const name = (u.display_name || '(no display name)');
+    const updated = u.updated_at ? new Date(u.updated_at).toLocaleString() : '-';
+    return `
+      <tr>
+        <td>${name}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${u.id || '-'}</td>
+        <td>${role}</td>
+        <td>${status}</td>
+        <td>${updated}</td>
+        <td>
+          <div class="admin-actions">
+            <button class="btn btn-sm" onclick="editDisplayName('${u.id}', '${String((u.display_name || '').replace(/'/g, "\\'")).replace(/"/g, '&quot;')}')">Edit Name</button>
+            <button class="btn btn-sm" onclick="toggleAdminRole('${u.id}', ${u.admin ? 'true' : 'false'})">${u.admin ? 'Remove Admin' : 'Make Admin'}</button>
+            <button class="btn btn-sm" onclick="toggleAccess('${u.id}', ${u.set_disabled ? 'true' : 'false'})">${u.set_disabled ? 'Allow Access' : 'Revoke Access'}</button>
+            <button class="btn btn-sm" onclick="deleteAccount('${u.id}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function loadUsersTable() {
+  const sb = prismSupabase.getClient();
+  const body = document.getElementById('usersTableBody');
+  if (!sb || !body) return;
+  body.innerHTML = '<tr><td colspan="6" class="hint">Loading users…</td></tr>';
+  try {
+    const batchSize = 1000;
+    let from = 0;
+    let all = [];
+
+    while (true) {
+      const to = from + batchSize - 1;
+      const { data, error } = await sb
+        .from('profiles')
+        .select('id, display_name, admin, set_disabled, updated_at')
+        .order('display_name', { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+
+      const rows = Array.isArray(data) ? data : [];
+      all = all.concat(rows);
+
+      if (rows.length < batchSize) break;
+      from += batchSize;
+    }
+
+    _usersCache = all;
+    const hint = document.getElementById('adminActionHint');
+    if (hint) hint.textContent = `Loaded ${all.length} profile(s).`;
+    applyUserFilter();
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="6" class="hint">Could not load users: ${e?.message || e}</td></tr>`;
+  }
+}
+
+function applyUserFilter() {
+  const q = String(document.getElementById('userSearch')?.value || '').toLowerCase().trim();
+  const rows = !_usersCache.length ? [] : _usersCache.filter((u) => {
+    if (!q) return true;
+    return String(u.display_name || '').toLowerCase().includes(q);
+  });
+  renderUsersTable(rows);
+}
+
+async function toggleAdminRole(userId, currentlyAdmin) {
+  const sb = prismSupabase.getClient();
+  if (!sb) return;
+  const hint = document.getElementById('adminActionHint');
+  hint.textContent = 'Updating admin role…';
+  try {
+    const { error } = await sb.from('profiles').update({ admin: !currentlyAdmin, updated_at: new Date().toISOString() }).eq('id', userId);
+    if (error) throw error;
+    hint.textContent = 'Admin role updated.';
+    await loadUsersTable();
+    await loadDashboardMetrics();
+  } catch (e) {
+    hint.textContent = `Admin role update failed: ${e?.message || e}`;
+  }
+}
+
+async function editDisplayName(userId, currentName) {
+  const ask = await adminModalAsk({
+    title: 'Edit Display Name',
+    message: 'Enter new display name:',
+    okText: 'Save',
+    withInput: true,
+    inputValue: currentName || ''
+  });
+  if (!ask.ok) return;
+  const next = ask.value;
+  const trimmed = String(next).trim();
+  if (!trimmed) {
+    document.getElementById('adminActionHint').textContent = 'Display name cannot be empty.';
+    return;
+  }
+  const sb = prismSupabase.getClient();
+  if (!sb) return;
+  const hint = document.getElementById('adminActionHint');
+  hint.textContent = 'Updating display name…';
+  try {
+    const { error } = await sb
+      .from('profiles')
+      .update({ display_name: trimmed, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    if (error) throw error;
+    hint.textContent = 'Display name updated.';
+    await loadUsersTable();
+  } catch (e) {
+    hint.textContent = `Display name update failed: ${e?.message || e}`;
+  }
+}
+
+async function toggleAccess(userId, currentlyDisabled) {
+  const sb = prismSupabase.getClient();
+  if (!sb) return;
+  const hint = document.getElementById('adminActionHint');
+  hint.textContent = currentlyDisabled ? 'Allowing access…' : 'Revoking access…';
+  try {
+    const { error } = await sb
+      .from('profiles')
+      .update({ set_disabled: !currentlyDisabled, admin: currentlyDisabled ? undefined : false, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    if (error) throw error;
+    hint.textContent = currentlyDisabled ? 'Access restored.' : 'Access revoked (set_disabled=true).';
+    await loadUsersTable();
+    await loadDashboardMetrics();
+  } catch (e) {
+    hint.textContent = `Access update failed: ${e?.message || e}`;
+  }
+}
+
+async function deleteAccount(userId) {
+  const ask = await adminModalAsk({
+    title: 'Delete Account',
+    message: 'Delete this account profile and app data rows? This cannot be undone.',
+    okText: 'Delete'
+  });
+  if (!ask.ok) return;
+  const sb = prismSupabase.getClient();
+  if (!sb) return;
+  const hint = document.getElementById('adminActionHint');
+  hint.textContent = 'Deleting account rows…';
+  try {
+    const cleanupErrors = [];
+    const safeDelete = async (table) => {
+      const { error } = await sb.from(table).delete().eq('user_id', userId);
+      if (error) cleanupErrors.push(`${table}: ${error.message}`);
+    };
+
+    await safeDelete('chats');
+    await safeDelete('quiz_results');
+    await safeDelete('file_metadata');
+
+    const { error } = await sb.from('profiles').delete().eq('id', userId);
+    if (error) throw error;
+    hint.textContent = cleanupErrors.length
+      ? `Profile deleted. Some related rows were not deleted: ${cleanupErrors.join(' | ')}`
+      : 'Account rows deleted.';
+    await loadUsersTable();
+    await loadDashboardMetrics();
+  } catch (e) {
+    hint.textContent = `Delete failed: ${e?.message || e}`;
+  }
+}
+
+document.getElementById('testCfgBtn')?.addEventListener('click', async () => {
+  const hint = document.getElementById('cfgHint');
+  hint.textContent = 'Testing connection…';
+  try {
+    const result = await prismSupabase.testConnection(
+      document.getElementById('cfgUrl').value.trim(),
+      document.getElementById('cfgAnonKey').value.trim()
+    );
+    hint.textContent = result?.ok ? 'Connection looks good.' : `Connection failed: ${result?.error || 'unknown error'}`;
+  } catch (e) {
+    hint.textContent = `Connection test failed: ${e?.message || e}`;
+  }
+});
+
+document.getElementById('saveCfgBtn')?.addEventListener('click', async () => {
+  const hint = document.getElementById('cfgHint');
+  hint.textContent = 'Saving config…';
+  try {
+    await prismSupabase.updateAppConfig({
+      supabase_url: document.getElementById('cfgUrl').value.trim(),
+      supabase_anon_key: document.getElementById('cfgAnonKey').value.trim(),
+      storage_bucket: document.getElementById('cfgBucket').value.trim() || 'user-files'
+    });
+    hint.textContent = 'Config saved.';
+    await loadDashboardMetrics();
+  } catch (e) {
+    hint.textContent = `Save failed: ${e?.message || e}`;
+  }
+});
+
+document.getElementById('refreshUsersBtn')?.addEventListener('click', loadUsersTable);
+document.getElementById('userSearch')?.addEventListener('input', applyUserFilter);
+
+document.getElementById('refreshStatusBtn')?.addEventListener('click', async () => {
+  document.getElementById('adminActionHint').textContent = 'Refreshing…';
+  await loadAdminState();
+});
+
+document.getElementById('signOutBtn')?.addEventListener('click', async () => {
+  try {
+    await prismAuth.signOut();
+    window.location.href = './chat.html?auth=1';
+  } catch (_) {
+    document.getElementById('adminActionHint').textContent = 'Sign out failed.';
+  }
+});
+
+window.addEventListener('DOMContentLoaded', loadAdminState);
+</script>
+</body>
+</html>

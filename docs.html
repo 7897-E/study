@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prism Docs</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c5cff">
+<meta name="description" content="Prism documentation: setup, usage, models, offline mode, file uploads, voice input, and troubleshooting.">
+<style>
+  body { overflow-y: auto; height: auto; }
+  .docs-shell { max-width: 1080px; margin: 0 auto; padding: 24px; position: relative; z-index: 1; }
+  .docs-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .docs-grid { display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
+  .docs-nav, .docs-card { border: 1px solid var(--border); border-radius: 14px; background: var(--bg-glass); backdrop-filter: blur(10px); }
+  .docs-nav { padding: 12px; position: sticky; top: 14px; height: fit-content; }
+  .docs-nav a { display: block; padding: 8px 10px; border-radius: 8px; color: var(--text-secondary); }
+  .docs-nav a:hover { background: var(--accent-subtle); color: var(--text-primary); text-decoration: none; }
+  .docs-card { padding: 18px; margin-bottom: 14px; }
+  .docs-card h2 { margin-bottom: 10px; color: var(--text-primary); }
+  .docs-card p, .docs-card li { color: var(--text-secondary); line-height: 1.6; }
+  .docs-card code { font-family: var(--font-mono); background: var(--bg-tertiary); border: 1px solid var(--border); padding: 1px 6px; border-radius: 6px; color: var(--text-primary); }
+  @media (max-width: 900px) {
+    .docs-grid { grid-template-columns: 1fr; }
+    .docs-nav { position: static; }
+  }
+</style>
+</head>
+<body>
+  <div class="docs-shell">
+    <div class="docs-top">
+      <div>
+        <div class="logo">Prism Docs</div>
+        <p class="hint" style="margin-top:6px">Quick guide for setup and core workflows.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn btn-sm" href="./index.html">← Back to Home</a>
+        <a class="btn btn-sm" href="./admin.html">Admin Panel</a>
+        <a class="btn btn-sm landing-auth-btn" href="./chat.html">Open Chat App</a>
+      </div>
+    </div>
+
+    <div class="docs-grid">
+      <aside class="docs-nav">
+        <a href="#getting-started">Getting Started</a>
+        <a href="#chat-modes">Chat Modes</a>
+        <a href="#attachments">Attachments</a>
+        <a href="#voice">Voice Input</a>
+        <a href="#offline">Offline + Sync</a>
+        <a href="#settings">Settings</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </aside>
+
+      <main>
+        <section id="getting-started" class="docs-card">
+          <h2>Getting Started</h2>
+          <ol>
+            <li>Open <code>chat.html</code> and add your API key in Settings.</li>
+            <li>Select your preferred single model.</li>
+            <li>Send a message to start your first chat.</li>
+          </ol>
+        </section>
+
+        <section id="chat-modes" class="docs-card">
+          <h2>Chat Modes</h2>
+          <p><strong>Single</strong> runs one model response. <strong>Multi-Grade</strong> runs multiple models and grades outputs.</p>
+          <p>Use Multi-Grade when you need stronger reliability or side-by-side quality checks.</p>
+        </section>
+
+        <section id="attachments" class="docs-card">
+          <h2>Attachments</h2>
+          <p>Attach files using the upload button in the composer. File data is sent to the model as hidden context (not dumped into your visible chat bubble).</p>
+          <ul>
+            <li>Text files are extracted and included as text context.</li>
+            <li>Images (including <code>.ico</code>) are passed as data URLs.</li>
+            <li>Pending upload chips let you remove files before sending.</li>
+          </ul>
+        </section>
+
+        <section id="voice" class="docs-card">
+          <h2>Voice Input</h2>
+          <p>Use the mic button to start/stop speech-to-text. Live transcript appears above the composer before sending.</p>
+        </section>
+
+        <section id="offline" class="docs-card">
+          <h2>Offline + Sync</h2>
+          <p>Prism works offline with local storage and can sync with Supabase when online.</p>
+          <ul>
+            <li>Offline mode uses your configured local/offline model.</li>
+            <li>When reconnected, data can sync back to cloud storage.</li>
+          </ul>
+        </section>
+
+        <section id="settings" class="docs-card">
+          <h2>Settings Highlights</h2>
+          <ul>
+            <li>Model selection (single, multi, grader)</li>
+            <li>Temperature and max tokens</li>
+            <li>Transparency mode and debug console</li>
+            <li>Theme toggle, export/import, storage meter</li>
+          </ul>
+        </section>
+
+        <section id="troubleshooting" class="docs-card">
+          <h2>Troubleshooting</h2>
+          <ul>
+            <li>If model calls fail: verify API key and selected model availability.</li>
+            <li>If voice input fails: ensure browser mic permission is allowed.</li>
+            <li>If sync fails: confirm Supabase credentials in <code>supabase.config.local.js</code>.</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+    const apply = () => {
+      const isLight = !!(mq && mq.matches);
+      document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', isLight ? '#f3f6fc' : '#0f1116');
+    };
+    apply();
+    if (mq && mq.addEventListener) mq.addEventListener('change', apply);
+  })();
+  </script>
+</body>
+</html>

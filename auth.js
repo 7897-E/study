@@ -7,6 +7,7 @@ const prismAuth = (() => {
   // ---------- State ----------
   let isInitialized = false;
   let authListener = null;
+  const ADMIN_CACHE_KEY = 'prism_admin_status_cache';
 
   // ---------- Init ----------
   async function init() {
@@ -39,6 +40,31 @@ const prismAuth = (() => {
   }
 
   // ---------- Auth Methods ----------
+  async function ensureProfile(user, fallbackDisplayName = '') {
+    const supabase = prismSupabase.getClient();
+    if (!supabase || !user?.id) return;
+
+    const displayName =
+      fallbackDisplayName ||
+      user.user_metadata?.display_name ||
+      user.email?.split('@')?.[0] ||
+      'User';
+
+    // Best-effort upsert so auth succeeds even if profile policy blocks write
+    try {
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          display_name: displayName,
+          admin: false,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (e) {
+      console.warn('[Auth] ensureProfile failed:', e?.message || e);
+    }
+  }
+
   async function signUp(email, password, displayName) {
     const supabase = prismSupabase.getClient();
     if (!supabase) throw new Error('Supabase not initialized');
@@ -52,6 +78,9 @@ const prismAuth = (() => {
     });
     
     if (error) throw error;
+    if (data?.user) {
+      await ensureProfile(data.user, displayName);
+    }
     return data;
   }
 
@@ -65,6 +94,9 @@ const prismAuth = (() => {
     });
     
     if (error) throw error;
+    if (data?.user) {
+      await ensureProfile(data.user);
+    }
     return data;
   }
 
@@ -127,7 +159,30 @@ const prismAuth = (() => {
   }
 
   async function isAdmin() {
-    return prismSupabase.isAdmin();
+    const user = await getUser();
+    if (!user?.id) return false;
+
+    try {
+      const supabase = prismSupabase.getClient();
+      if (!supabase) return false;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('admin')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      const isAdminUser = data?.admin === true;
+      localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({ id: user.id, admin: isAdminUser }));
+      return isAdminUser;
+    } catch (e) {
+      console.warn('[Auth] isAdmin query failed, using cache fallback:', e?.message || e);
+      try {
+        const cached = JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY) || 'null');
+        if (cached && cached.id === user.id) return cached.admin === true;
+      } catch (_) { /* ignore */ }
+      return false;
+    }
   }
 
   // ---------- Profile Management ----------

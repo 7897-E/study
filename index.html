@@ -3,624 +3,148 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Prism</title>
+<title>Prism AI — Intelligent Multi-Model AI Chat</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#6C5CE7">
-<!-- Supabase SDK -->
+<meta name="theme-color" content="#7c5cff">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1"></script>
 <script src="supabase.config.local.js"></script>
-<!-- DOMPurify for XSS sanitization -->
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3"></script>
+<meta name="description" content="Prism AI — Multi-model AI chat with SAT quiz, file analysis, offline-first sync, and more.">
+<meta property="og:title" content="Prism AI — Intelligent Multi-Model AI Chat">
+<meta property="og:description" content="Chat with multiple AI models, take SAT quizzes, analyze files, and sync across devices.">
+<meta property="og:type" content="website">
+<style>
+  /* Landing page specific overrides */
+  body { overflow-y: auto; height: auto; }
+</style>
 </head>
 <body>
-
-<!-- API Key Modal -->
-<div id="apiModal" class="modal-overlay" style="display:none">
-  <div class="modal">
-    <h2>OpenRouter API Key</h2>
-    <p class="hint">Your key is stored locally in your browser.</p>
-    <input type="password" id="apiKeyInput" placeholder="sk-or-v1-...">
-    <div style="display:flex;gap:10px">
-      <button class="btn" style="flex:1" onclick="app.saveApiKey()">Save</button>
-      <button class="btn" onclick="app.closeApiModal()" style="flex:1;opacity:0.6">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Offline Model Modal -->
-<div id="offlineModelModal" class="modal-overlay" style="display:none">
-  <div class="modal">
-    <h2>Choose Offline Model</h2>
-    <p class="hint">Offline mode detected. Select a local model from your AI server.</p>
-    <select id="offlineModelSelect"></select>
-    <input type="text" id="offlineModelManualInput" placeholder="Or type model id manually (e.g. local/llama-2-7b-chat)" style="margin-top:10px">
-    <div style="display:flex;gap:10px;margin-top:10px">
-      <button class="btn" style="flex:1" onclick="app.saveOfflineModelFromModal()">Use Model</button>
-      <button class="btn" style="flex:1;opacity:0.9" onclick="app.saveOfflineModelManual()">Use Typed Model</button>
-      <button class="btn" style="flex:1;opacity:0.8" onclick="app.refreshOfflineModelChoices(true)">Refresh</button>
-    </div>
-  </div>
-</div>
-
-<!-- Offline Multi-Mode Unsupported Modal -->
-<div id="offlineMultiModal" class="modal-overlay" style="display:none">
-  <div class="modal">
-    <h2>Offline Limitation</h2>
-    <p class="hint">Multi-Grade mode is not supported while offline.</p>
-    <p class="hint" style="margin-top:8px">Please switch to <strong>Single</strong> mode, or reconnect to internet.</p>
-    <div style="display:flex;gap:10px;margin-top:12px">
-      <button class="btn" style="flex:1" onclick="app.forceSingleModeFromOfflinePopup()">Switch to Single</button>
-      <button class="btn" style="flex:1;opacity:0.85" onclick="app.closeOfflineMultiPopup()">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- Themed Confirm Modal -->
-<div id="themedConfirmModal" class="modal-overlay" style="display:none">
-  <div class="modal themed-confirm-modal">
-    <h2 id="themedConfirmTitle">Warning</h2>
-    <p class="hint" id="themedConfirmMessage">Are you sure?</p>
-    <div style="display:flex;gap:10px;margin-top:12px">
-      <button class="btn" style="flex:1;opacity:0.85" id="themedConfirmCancelBtn">Cancel</button>
-      <button class="btn" style="flex:1" id="themedConfirmOkBtn">Confirm</button>
-    </div>
-  </div>
-</div>
-
-<!-- Themed Rename Modal -->
-<div id="themedRenameModal" class="modal-overlay" style="display:none">
-  <div class="modal themed-confirm-modal">
-    <h2 id="themedRenameTitle">Rename Chat</h2>
-    <p class="hint" id="themedRenameMessage">Enter a new chat name.</p>
-    <input type="text" id="themedRenameInput" placeholder="Chat name">
-    <div style="display:flex;gap:10px;margin-top:12px">
-      <button class="btn" style="flex:1;opacity:0.85" id="themedRenameCancelBtn">Cancel</button>
-      <button class="btn" style="flex:1" id="themedRenameOkBtn">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- Settings Panel -->
-<div class="overlay" id="overlay" onclick="app.toggleSettings()"></div>
-<div class="overlay" id="accountOverlay" onclick="closeAuthModal()"></div>
-<div class="settings-panel" id="settingsPanel">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <h2>Settings</h2>
-    <button class="btn btn-sm" onclick="app.toggleSettings()">✕</button>
-  </div>
-
-  <div class="setting-group">
-    <label>API Key</label>
-    <input type="password" id="settingsApiKey" placeholder="sk-or-v1-...">
-    <button class="btn btn-sm" style="margin-top:6px;width:100%" onclick="app.saveApiKeyFromSettings()">Save Key</button>
-  </div>
-
-  <div class="setting-group">
-    <label>Chat Model</label>
-    <div class="model-search-wrap">
-      <input class="model-search" id="singleModelSearch" placeholder="Search chat models..." autocomplete="off">
-      <div class="model-dropdown" id="singleModelDropdown"></div>
-    </div>
-    <span class="hint" id="singleModelSelectedHint">Select the model used in Single mode</span>
-    <label class="inline-check">
-      <input type="checkbox" id="singleModelRetry">
-      Retry up to 3 times if needed
-    </label>
-  </div>
-
-  <div class="setting-group">
-    <label>Offline Model</label>
-    <select id="offlineModelSetting"></select>
-    <span class="hint">Used when Wi‑Fi/internet is unavailable.</span>
-    <button class="btn btn-sm" style="margin-top:6px;width:100%" onclick="app.refreshOfflineModelChoices(true)">Refresh Offline Models</button>
-  </div>
-
-  <div class="setting-group">
-    <label>Grading Model</label>
-    <div class="model-search-wrap">
-      <input class="model-search" id="gradingModel" placeholder="Search grading models..." autocomplete="off" value="openai/gpt-4o-mini">
-      <div class="model-dropdown" id="gradingModelDropdown"></div>
-    </div>
-    <span class="hint">Model used to grade responses in multi-model mode</span>
-    <label class="inline-check">
-      <input type="checkbox" id="gradingModelRetry">
-      Retry up to 3 times if needed
-    </label>
-    <div class="toggle-row" style="margin-top:10px">
-      <div>
-        <label style="margin-bottom:2px">Show grader score table</label>
-        <span class="hint">Show/hide the final grader score table in chat output.</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="showGraderTable">
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <label>Grading Prompt Template</label>
-    <textarea id="gradingPrompt">You are a quality grader. Rate each response on a scale of 1-10 for helpfulness, accuracy, and clarity. Return JSON like [{"model":"model-name","score":8,"reason":"brief reason"}]. Pick the best.</textarea>
-  </div>
-
-  <div class="setting-group">
-    <label>Multi-AI Models</label>
-    <div class="model-search-wrap">
-      <input class="model-search" id="multiModelSearch" placeholder="Search model to add..." autocomplete="off">
-      <div class="model-dropdown" id="multiModelDropdown"></div>
-    </div>
-    <div class="multi-model-toolbar">
-      <button class="btn btn-sm" id="toggleRearrangeBtn" onclick="app.toggleRearrangeMode()">Rearrange</button>
-      <span class="hint" id="rearrangeHint" style="display:none">Drag models to set run order</span>
-    </div>
-    <div id="multiModelList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
-    <span class="hint">These models will run in Multi-Grade mode</span>
-  </div>
-
-  <div class="setting-group">
-    <label>Grading Weights</label>
-    <div class="hint">Helpfulness <span id="wHelpVal">5</span></div>
-    <input type="range" id="weightHelpfulness" min="0" max="10" value="5">
-    <div class="hint">Accuracy <span id="wAccVal">5</span></div>
-    <input type="range" id="weightAccuracy" min="0" max="10" value="5">
-    <div class="hint">Clarity <span id="wClarVal">5</span></div>
-    <input type="range" id="weightClarity" min="0" max="10" value="5">
-    <div class="hint">Speed <span id="wSpeedVal">5</span></div>
-    <input type="range" id="weightSpeed" min="0" max="10" value="5">
-  </div>
-
-  <div class="setting-group">
-    <label>Multi-Model Evaluation</label>
-    <span class="hint">All selected Multi-AI models are always run and graded.</span>
-    <div class="toggle-row" style="margin-top:10px">
-      <div>
-        <label style="margin-bottom:2px">Exhaust model list on failures</label>
-        <span class="hint" id="multiExhaustModeHint">If ON, failed models are replaced by remaining models until your whole list is tried.</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="multiExhaustOnFailure">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="hint" style="margin-top:8px">Cutoff wait (seconds) <span id="multiCutoffSecVal">5.0</span>s</div>
-    <input type="range" id="multiCutoffSec" value="5" min="0.5" max="15" step="0.1">
-    <span class="hint">How long to wait after minimum usable responses are ready before cutoff/grading begins.</span>
-  </div>
-
-  <div class="setting-group">
-    <label>Temperature</label>
-    <div class="hint">Value <span id="temperatureVal">0.7</span></div>
-    <input type="range" id="temperature" value="0.7" min="0" max="2" step="0.1">
-    <span class="hint">Controls creativity/randomness. Lower values are more focused and consistent; higher values are more creative and varied.</span>
-  </div>
-
-  <div class="setting-group">
-    <label>Max Tokens</label>
-    <div class="hint">Value <span id="maxTokensVal">4096</span></div>
-    <input type="range" id="maxTokens" value="4096" min="100" max="32768" step="100">
-    <span class="hint">Maximum length of the model response. Higher values allow longer answers but may take longer and use more tokens.</span>
-  </div>
-
-  <div class="setting-group">
-    <div class="toggle-row">
-      <div>
-        <label style="margin-bottom:2px">Transparency Mode</label>
-        <span class="hint">Show model-by-model live responses and score details</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="transparencyMode" checked>
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="toggle-row">
-      <div>
-        <label style="margin-bottom:2px">Debug Console</label>
-        <span class="hint">Show/hide live debug logs under the input box</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="debugConsoleToggle" checked>
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <div class="toggle-row">
-      <div>
-        <label style="margin-bottom:2px">Subagent Mode</label>
-        <span class="hint">When enabled, the AI can delegate subtasks to other models from your Multi-AI list. The AI emits <subagent> tags to spawn subagents.</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="subagentToggle" checked>
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="hint" style="margin-top:8px">Value <span id="subagentLikelihoodVal">50</span>%</div>
-    <input type="range" id="subagentLikelihood" value="50" min="0" max="100" step="50">
-    <span class="hint">Controls how likely the main AI is to decide to delegate subtasks to subagents.</span>
-  </div>
-
-  <div class="setting-group">
-    <div class="toggle-row">
-      <div>
-        <label style="margin-bottom:2px">Light Mode</label>
-        <span class="hint">Switch between dark and light chat themes</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="themeToggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <label>Export / Import Chat</label>
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1" onclick="app.exportChat()">Export</button>
-      <button class="btn" style="flex:1" onclick="document.getElementById('importFile').click()">Import</button>
-      <input type="file" id="importFile" accept=".json" style="display:none" onchange="app.importChat(event)">
-    </div>
-  </div>
-
-  <div class="setting-group">
-    <label>Export / Import All (Settings + Chats)</label>
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1" onclick="app.exportAllData()">Export All</button>
-      <button class="btn" style="flex:1" onclick="document.getElementById('importAllFile').click()">Import All</button>
-      <input type="file" id="importAllFile" accept=".json" style="display:none" onchange="app.importAllData(event)">
-    </div>
-    <span class="hint">Share full app setup including chats and settings.</span>
-  </div>
-
-  <div class="setting-group">
-    <label>Local Storage Usage</label>
-    <div class="storage-meter" aria-hidden="true">
-      <div class="storage-meter-fill" id="storageUsageFill" style="width:0%"></div>
-    </div>
-    <div class="storage-meta">
-      <span id="storageUsageText">0 KB used</span>
-      <span id="storageUsagePct">0%</span>
-    </div>
-    <span class="hint">Estimated browser localStorage usage for this app.</span>
-  </div>
-
-  <div class="setting-group">
-    <button class="btn" style="width:100%;margin-bottom:8px" onclick="app.deleteApiKeyWithWarnings()">Delete API Key</button>
-    <button class="btn" style="width:100%;margin-bottom:8px" onclick="app.deleteAllChats()">Delete Chats</button>
-    <button class="btn" style="width:100%" onclick="app.clearAllData()">Clear All Data</button>
-  </div>
-</div>
-
-<!-- Top Bar -->
-<div class="top-bar">
-  <div class="top-left-actions">
-    <button class="btn btn-sm top-newchat-mini" onclick="app.newChat()">+</button>
+<div class="landing">
+  <!-- Nav -->
+  <nav class="landing-nav">
     <div class="logo">Prism</div>
-  </div>
-  <div class="top-actions">
-    <span class="offline-badge" id="offlineBadge" title="Connection status">Offline</span>
-    <span class="transparency-badge" id="transparencyBadge">Transparency Active</span>
-  </div>
+    <div class="landing-nav-links">
+      <a href="#features">Features</a>
+      <a href="./docs.html">Docs</a>
+      <a href="./admin.html">Admin</a>
+      <a href="./faq.html">FAQ</a>
+      <a href="./contact.html">Contact</a>
+      <a href="./chat.html?auth=1" class="btn btn-sm landing-auth-btn" id="landingAuthBtn">Sign In / Open App →</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="landing-hero">
+    <h1>Prism AI</h1>
+    <p>Intelligent multi-model AI chat with SAT quiz, file analysis, offline-first sync, and a powerful admin panel. One app, every AI tool you need.</p>
+    <div class="landing-cta">
+      <a href="./chat.html?auth=1" class="btn btn-lg landing-auth-btn" id="landingLaunchBtn">Launch App (Sign In)</a>
+      <a href="./docs.html" class="btn btn-lg btn-ghost">Read the Docs</a>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="landing-features" id="features">
+    <div class="feature-card">
+      <div class="icon">🤖</div>
+      <h3>Multi-Model Chat</h3>
+      <p>Chat with any AI model via OpenRouter or your local server. Switch models on the fly or run multiple models in parallel with Multi-Grade mode.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">⚖️</div>
+      <h3>Multi-Grade Mode</h3>
+      <p>Run multiple AI models simultaneously and have them grade each other's responses. Configurable weights for helpfulness, accuracy, clarity, and speed.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">📝</div>
+      <h3>SAT Quiz</h3>
+      <p>Upload SAT question banks as PDFs or paste text. Adaptive quiz mode with momentum tracking, anti-click-through, two-pass review, and detailed analytics.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">📁</div>
+      <h3>File Analysis</h3>
+      <p>Upload documents and images. AI summarizes content, extracts key points, and answers questions about your files. Supports PDFs, text, and images.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🎤</div>
+      <h3>Voice Input</h3>
+      <p>Speak your prompts with built-in speech-to-text. Visual waveform feedback and one-tap recording right from the chat input.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">☁️</div>
+      <h3>Cloud Sync</h3>
+      <p>Everything syncs to Supabase when online. Works 100% offline with localStorage/IndexedDB. Your data is there when you come back.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🔧</div>
+      <h3>Admin Panel</h3>
+      <p>Admin-controlled shared database. Manage users, configure Supabase credentials, monitor storage, set global defaults, and view audit logs.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">📱</div>
+      <h3>Installable PWA</h3>
+      <p>Install Prism AI on your device. Works like a native app with offline support, push-ready architecture, and a custom splash screen.</p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="landing-footer">
+    <span>© 2026 Prism AI. All rights reserved.</span>
+    <div class="landing-footer-links">
+      <a href="./about.html">About</a>
+      <a href="./terms.html">Terms</a>
+      <a href="./privacy.html">Privacy</a>
+      <a href="./contact.html">Contact</a>
+    </div>
+  </footer>
 </div>
-
-<!-- Main -->
-<div class="main-container">
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <span style="font-size:0.9em;color:var(--text-secondary)">History</span>
-      <div class="sidebar-actions">
-        <button class="btn btn-sm" id="sidebarNewChatBtn" onclick="app.newChat()">+ New Chat</button>
-        <button class="btn btn-sm" id="sidebarToggleBtn" onclick="app.toggleSidebar()">☰</button>
-      </div>
-    </div>
-    <div class="chat-list" id="chatList"></div>
-    <div class="sidebar-footer">
-      <button class="btn btn-sm" id="sidebarAccountBtn" onclick="openAuthModal()">Account</button>
-      <button class="btn btn-sm" id="sidebarSettingsBtn" onclick="app.toggleSettings()">⚙ Settings</button>
-    </div>
-    <button class="btn btn-sm" id="sidebarCollapsedAccountBtn" onclick="openAuthModal()" title="Account" aria-label="Account">
-      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
-        <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z" fill="currentColor"/>
-      </svg>
-    </button>
-    <button class="btn btn-sm" id="sidebarCollapsedSettingsBtn" onclick="app.toggleSettings()" title="Settings">⚙</button>
-  </div>
-
-
-  <!-- Chat Area -->
-  <div class="chat-area">
-    <div class="model-bar">
-      <div style="display:flex;align-items:center;gap:6px">
-        <span style="font-size:0.8em;color:var(--text-secondary)">Mode:</span>
-        <div class="mode-toggle">
-          <button class="mode-btn active" id="singleModeBtn" onclick="app.setMode('single')">Single</button>
-          <button class="mode-btn" id="multiModeBtn" onclick="app.setMode('multi')">Multi-Grade</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="messages" id="messages">
-      <div class="welcome" id="welcomeScreen">
-        <h1>Prism</h1>
-        <p>Start a conversation by typing below.<br>Choose a model from the settings panel.</p>
-        <p style="margin-top:10px;font-size:0.8em;color:var(--text-secondary)">
-          Go to Settings to select a model.
-        </p>
-      </div>
-    </div>
-
-    <div class="input-area">
-      <div id="slashMenu" class="slash-menu" style="display:none"></div>
-      <div id="pendingUploads" class="pending-uploads" style="display:none"></div>
-      <div class="input-wrap">
-        <button class="btn btn-sm attach-btn" id="attachBtn" type="button" title="Attach file" aria-label="Attach file">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-            <path d="M12 16V8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-            <path d="M8.8 11.2 12 8l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M7 16.5h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
-            <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
-          </svg>
-        </button>
-        <input type="file" id="fileInput" style="display:none" multiple>
-        <textarea id="userInput" placeholder="Type your message..." rows="1" onkeydown="app.handleKey(event)" oninput="app.autoResize(this)"></textarea>
-        <button class="btn btn-sm mic-btn" id="micBtn" type="button" title="Voice input" aria-label="Start voice input">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-            <rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-            <path d="M6.5 10.5a5.5 5.5 0 0 0 11 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M12 16.5v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M9 20.5h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-        </button>
-        <button class="send-btn" id="sendBtn" onclick="app.sendMessage()">Send</button>
-        <button class="send-btn" id="stopBtn" onclick="app.stopGeneration()" style="display:none">Stop</button>
-      </div>
-      <div class="debug-console" id="debugConsole" aria-live="polite"></div>
-    </div>
-
-    <div class="token-bar" id="tokenBar">
-      <span id="tokenStats">Tokens: 0 (in) / 0 (out)</span>
-      <span id="apiSourceBadge">API: -</span>
-      <span id="modelUsed">Model: -</span>
-    </div>
-  </div>
-</div>
-
-<!-- Prism Core Modules -->
-<script src="supabase.js?v=1"></script>
-<script src="auth.js?v=1"></script>
-<script src="storage.js?v=1"></script>
-<script src="sync.js?v=1"></script>
-
-<!-- Existing App Scripts -->
-<script src="api.js"></script>
-<script src="models.js"></script>
-<script src="offlineapi/offline-api.js"></script>
-<script src="app.js"></script>
-
-<!-- Prism Boot Sequence -->
 <script>
-document.addEventListener('DOMContentLoaded', async () => {
-  // Supabase credentials loaded from local config file
-  const SUPABASE_URL = window.PRISM_SUPABASE_CONFIG?.url || '';
-  const SUPABASE_PUBLISHABLE_KEY = window.PRISM_SUPABASE_CONFIG?.publishableKey || '';
-
-  try {
-    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-      throw new Error('Missing Supabase config. Set window.PRISM_SUPABASE_CONFIG in supabase.config.local.js');
-    }
-
-    // 1. Init Supabase client
-    await prismSupabase.init(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-    console.log('[Prism] Supabase initialized');
-
-    // 2. Init Auth (listens for session changes)
-    prismAuth.init();
-    console.log('[Prism] Auth initialized');
-
-    // 3. Init IndexedDB storage
-    await prismStorage.initDB();
-    console.log('[Prism] Storage initialized');
-
-    // 4. Init Sync manager
-    prismSync.init();
-    console.log('[Prism] Sync initialized');
-
-    // 5. Listen for auth changes to update app UI
-    window.addEventListener('prism:auth-change', (e) => {
-      const { session } = e.detail;
-      const user = session?.user || null;
-      if (typeof app !== 'undefined' && app.handleAuthChange) {
-        app.handleAuthChange(user, session);
-      }
-      console.log('[Prism] Auth change:', user ? user.email : 'signed out');
-    });
-
-    // 6. Trigger initial auth check
-    const session = await prismSupabase.getSession();
-    if (session?.user) {
-      window.dispatchEvent(new CustomEvent('prism:auth-change', {
-        detail: { user: session.user, session }
-      }));
-    }
-
-    console.log('[Prism] Boot complete ✓');
-  } catch (err) {
-    console.error('[Prism] Boot error:', err);
-    // App still works offline without Supabase
-    console.log('[Prism] Continuing in offline mode...');
-  }
-});
+(() => {
+  const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+  const apply = () => {
+    const isLight = !!(mq && mq.matches);
+    document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isLight ? '#f3f6fc' : '#0f1116');
+  };
+  apply();
+  if (mq && mq.addEventListener) mq.addEventListener('change', apply);
+})();
 </script>
-
-<!-- ==============================
-     Authentication Modal (Sign In / Sign Up)
-     ============================== -->
-<div id="authModal" class="settings-panel account-panel" style="z-index:101">
-  <div class="auth-modal-card">
-    <h2>Account</h2>
-    <div class="tabs auth-tabs">
-      <button class="tab auth-tab active" data-tab="signin">Sign In</button>
-      <button class="tab auth-tab" data-tab="signup">Sign Up</button>
-    </div>
-    <div class="tab-content auth-tab-content" id="signinTab" style="display:block">
-      <input type="email" id="signinEmail" placeholder="Email" class="input" />
-      <input type="password" id="signinPassword" placeholder="Password" class="input" />
-      <button class="btn" onclick="handleSignIn()">Sign In</button>
-    </div>
-    <div class="tab-content auth-tab-content" id="signupTab" style="display:none">
-      <input type="email" id="signupEmail" placeholder="Email" class="input" />
-      <input type="password" id="signupPassword" placeholder="Password" class="input" />
-      <input type="text" id="signupDisplayName" placeholder="Display Name" class="input" />
-      <button class="btn" onclick="handleSignUp()">Sign Up</button>
-    </div>
-    <div class="tab-content auth-tab-content" id="accountTab" style="display:none">
-      <div class="hint" id="accountEmailLabel">Signed in</div>
-      <input type="email" id="accountEmail" placeholder="New email" class="input" />
-      <button class="btn" onclick="handleUpdateEmail()">Update Email</button>
-      <input type="password" id="accountPassword" placeholder="New password" class="input" />
-      <button class="btn" onclick="handleUpdatePassword()">Update Password</button>
-      <button class="btn" onclick="handleSignOut()">Sign Out</button>
-    </div>
-    <button class="btn auth-close-btn" onclick="closeAuthModal()">Close</button>
-  </div>
-</div>
-
 <script>
-// Simple tab switching for auth modal
-document.querySelectorAll('#authModal .tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('#authModal .tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const target = tab.getAttribute('data-tab');
-    document.getElementById('signinTab').style.display = target === 'signin' ? 'block' : 'none';
-    document.getElementById('signupTab').style.display = target === 'signup' ? 'block' : 'none';
-  });
-});
-
-async function handleSignIn() {
-  const email = document.getElementById('signinEmail').value.trim();
-  const password = document.getElementById('signinPassword').value;
-  try {
-    await prismAuth.signIn(email, password);
-    closeAuthModal();
-    app?.showToast?.('Signed in successfully.', 'success');
-  } catch (e) {
-    app?.showToast?.('Sign-in failed: ' + e.message, 'error');
-  }
-}
-
-async function handleSignUp() {
-  const email = document.getElementById('signupEmail').value.trim();
-  const password = document.getElementById('signupPassword').value;
-  const displayName = document.getElementById('signupDisplayName').value.trim();
-  try {
-    await prismAuth.signUp(email, password, displayName);
-    closeAuthModal();
-    app?.showToast?.('Account created successfully.', 'success');
-  } catch (e) {
-    app?.showToast?.('Sign-up failed: ' + e.message, 'error');
-  }
-}
-
-function openAuthModal() {
-  const modal = document.getElementById('authModal');
-  if (!modal) return;
-  const user = app?.state?.user || null;
-  const signInTab = document.querySelector('#authModal .tab[data-tab="signin"]');
-  const signUpTab = document.querySelector('#authModal .tab[data-tab="signup"]');
-  const accountTab = document.getElementById('accountTab');
-  const accountEmailLabel = document.getElementById('accountEmailLabel');
-  const signinWrap = document.getElementById('signinTab');
-  const signupWrap = document.getElementById('signupTab');
-
-  if (user) {
-    if (signInTab) signInTab.style.display = 'none';
-    if (signUpTab) signUpTab.style.display = 'none';
-    if (signinWrap) signinWrap.style.display = 'none';
-    if (signupWrap) signupWrap.style.display = 'none';
-    if (accountTab) accountTab.style.display = 'flex';
-    if (accountEmailLabel) accountEmailLabel.textContent = `Signed in as ${user.email || 'user'}`;
-  } else {
-    if (signInTab) signInTab.style.display = '';
-    if (signUpTab) signUpTab.style.display = '';
-    if (accountTab) accountTab.style.display = 'none';
-    if (signinWrap) signinWrap.style.display = 'block';
-    if (signupWrap) signupWrap.style.display = 'none';
-    document.querySelectorAll('#authModal .tab').forEach(t => t.classList.remove('active'));
-    signInTab?.classList.add('active');
-  }
-
-  modal.style.display = 'flex';
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
-  document.getElementById('accountOverlay')?.classList.add('open');
-}
-
-async function handleUpdateEmail() {
-  const email = document.getElementById('accountEmail')?.value?.trim();
-  if (!email) return app?.showToast?.('Type a new email first.', 'warning');
-  try {
-    await prismAuth.updateEmail(email);
-    app?.showToast?.('Email update request sent. Check your inbox.', 'success');
-  } catch (e) {
-    app?.showToast?.('Email update failed: ' + e.message, 'error');
-  }
-}
-
-async function handleUpdatePassword() {
-  const password = document.getElementById('accountPassword')?.value || '';
-  if (!password || password.length < 6) return app?.showToast?.('Password must be at least 6 characters.', 'warning');
-  try {
-    await prismAuth.updatePassword(password);
-    document.getElementById('accountPassword').value = '';
-    app?.showToast?.('Password updated successfully.', 'success');
-  } catch (e) {
-    app?.showToast?.('Password update failed: ' + e.message, 'error');
-  }
-}
-
-async function handleSignOut() {
-  try {
-    await prismAuth.signOut();
-    closeAuthModal();
-    app?.showToast?.('Signed out.', 'info');
-  } catch (e) {
-    app?.showToast?.('Sign out failed: ' + e.message, 'error');
-  }
-}
-
-function closeAuthModal() {
-  const modal = document.getElementById('authModal');
-  if (!modal) return;
-  modal.classList.remove('open');
-  modal.style.display = '';
-  modal.setAttribute('aria-hidden', 'true');
-  document.getElementById('accountOverlay')?.classList.remove('open');
-}
-
-// Ensure launcher and modal behavior are active even if other scripts run later
-window.addEventListener('load', () => {
-  const modal = document.getElementById('authModal');
-  if (modal && !modal.getAttribute('aria-hidden')) {
-    modal.setAttribute('aria-hidden', 'true');
-  }
-
-  // If opened from landing page with ?auth=1, show auth modal immediately
+(async () => {
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('auth') === '1') {
-      openAuthModal();
-    }
-  } catch (e) {
-    // no-op
-  }
-});
-</script>
+    const forceAuth = params.get('auth') === '1';
+    const navBtn = document.getElementById('landingAuthBtn');
+    const launchBtn = document.getElementById('landingLaunchBtn');
+    const setSignedInUi = () => {
+      if (navBtn) {
+        navBtn.href = './chat.html';
+        navBtn.textContent = 'Open App →';
+      }
+      if (launchBtn) {
+        launchBtn.href = './chat.html';
+        launchBtn.textContent = 'Open App';
+      }
+    };
 
+    if (forceAuth) return;
+
+    const url = window.PRISM_SUPABASE_CONFIG?.url;
+    const key = window.PRISM_SUPABASE_CONFIG?.publishableKey;
+    if (!url || !key || !window.supabase?.createClient) return;
+
+    const client = window.supabase.createClient(url, key);
+    const { data } = await client.auth.getSession();
+    if (data?.session?.user) setSignedInUi();
+  } catch (_) {
+    // keep default CTA behavior on any lookup error
+  }
+})();
+</script>
 </body>
 </html>
+
+
+
