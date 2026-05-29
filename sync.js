@@ -155,7 +155,22 @@ const prismSync = (() => {
   
   async function syncChats(supabase, items) {
     const user = await prismSupabase.getUser();
-    const updates = items.map(item => ({
+    const deleteItems = items.filter(item => item.operation === 'delete');
+    const upsertItems = items.filter(item => item.operation !== 'delete');
+
+    if (deleteItems.length && user?.id) {
+      const deleteIds = deleteItems.map(item => item.entityId).filter(Boolean);
+      if (deleteIds.length) {
+        const { error: deleteError } = await supabase
+          .from('chats')
+          .delete()
+          .eq('user_id', user.id)
+          .in('id', deleteIds);
+        if (deleteError) throw deleteError;
+      }
+    }
+
+    const updates = upsertItems.map(item => ({
       id: item.entityId,
       user_id: user?.id || null,
       title: item.data.title || 'New Chat',
@@ -164,12 +179,13 @@ const prismSync = (() => {
       mode: item.data.mode,
       updated_at: new Date(item.data.timestamp || Date.now()).toISOString()
     }));
-    
-    const { error } = await supabase
-      .from('chats')
-      .upsert(updates, { onConflict: 'id' });
-      
-    if (error) throw error;
+
+    if (updates.length) {
+      const { error } = await supabase
+        .from('chats')
+        .upsert(updates, { onConflict: 'id' });
+      if (error) throw error;
+    }
     
     // Remove synced items from queue
     items.forEach(item => dequeue(item.id));

@@ -463,6 +463,37 @@ input[type="range"]::-moz-range-thumb {
 }
 .sidebar-footer .btn { width: 100%; }
 
+#sidebarCollapsedAccountBtn,
+#sidebarCollapsedSettingsBtn {
+  display: none;
+  position: absolute;
+  left: 6px;
+  transform: none;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.sidebar.collapsed #sidebarCollapsedAccountBtn,
+.sidebar.collapsed #sidebarCollapsedSettingsBtn {
+  display: inline-flex;
+}
+
+.sidebar.collapsed #sidebarCollapsedAccountBtn { bottom: 52px; }
+.sidebar.collapsed #sidebarCollapsedSettingsBtn { bottom: 12px; }
+
+.sidebar.collapsed #sidebarCollapsedAccountBtn svg {
+  width: 11px;
+  height: 11px;
+}
+
 /* ---------- Chat Area ---------- */
 .chat-area {
   flex: 1;
@@ -944,6 +975,10 @@ input[type="range"]::-moz-range-thumb {
   align-items: flex-end;
   max-width: 900px;
   margin: 0 auto;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.input-wrap:focus-within {
+  transform: translateY(-1px);
 }
 .input-wrap textarea {
   flex: 1;
@@ -1138,6 +1173,47 @@ input[type="range"]::-moz-range-thumb {
 .modal h2 { margin-bottom: var(--space-3); color: var(--accent); }
 .modal .hint { margin-bottom: var(--space-4); }
 .modal-actions { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
+
+/* Auth modal theme alignment */
+.auth-modal-card {
+  width: min(100%, 430px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+.auth-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.auth-tab {
+  flex: 1;
+  border-radius: var(--radius-md);
+}
+.auth-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.auth-tab-content .btn,
+.auth-close-btn {
+  width: 100%;
+}
+.auth-close-btn {
+  margin-top: var(--space-3);
+  opacity: 0.85;
+}
+
+/* Account side panel should not render a nested card box */
+.account-panel .auth-modal-card {
+  width: 100%;
+  max-width: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
 
 .themed-confirm-modal {
   border-color: #5a3dca;
@@ -1512,6 +1588,84 @@ input[type="range"]::-moz-range-thumb {
 .slash-menu-cmd { color: var(--accent); min-width: 90px; font-weight: 600; }
 .slash-menu-desc { color: var(--text-secondary); font-size: 0.88em; }
 .slash-menu-empty { color: var(--text-secondary); padding: var(--space-2) var(--space-3); font-size: 0.85em; }
+
+/* ---------- Composer Attachments ---------- */
+.attach-btn {
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.mic-btn {
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.mic-btn.listening {
+  background: var(--error) !important;
+  border-color: var(--error) !important;
+  color: #fff !important;
+  animation: pulseBtn 1.4s ease-in-out infinite;
+}
+
+.pending-uploads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pending-upload-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.78em;
+  animation: chipIn var(--duration-fast) var(--ease-out);
+}
+
+@keyframes chipIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.pending-upload-chip .name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-upload-chip .meta {
+  color: var(--text-secondary);
+}
+
+.pending-upload-remove {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  line-height: 1;
+  padding: 0;
+}
+
+.pending-upload-remove:hover {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {

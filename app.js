@@ -42,6 +42,14 @@ const app = {
     ,goalPrompt: localStorage.getItem('or_goal_prompt') || ''
     ,subagentEnabled: localStorage.getItem('or_subagent_enabled') !== 'false'
     ,subagentLikelihood: Number(localStorage.getItem('or_subagent_likelihood') || 50)
+    ,user: null
+    ,authBootHandled: false
+    ,pendingUploads: []
+    ,voiceSupported: false
+    ,isListening: false
+    ,voiceRecognition: null
+    ,voiceTranscriptFinal: ''
+    ,voiceSessionBaseText: ''
   },
 
   TOOL_PROMPT: "IMPORTANT FORMATTING RULES: Use <code>...</code> ONLY for real code snippets, shell commands, config blocks, JSON, or exact tool/API payloads that users may copy/run. Use <copytext>...</copytext> for non-code text the user should copy (emails, templates, prompts, messages, etc.). Do NOT wrap normal prose, summaries, or plain lists in <code> or <copytext>. Keep explanations outside these tags.",
@@ -150,6 +158,8 @@ const app = {
     this.updateApiSourceBadge();
     this.updateModeButtons();
     this.updateDebugConsoleVisibility();
+    this.renderPendingUploads();
+    this.setupVoiceInput();
     this.applySettingTooltips();
     this.startOfflineHealthMonitor();
     this.refreshOfflineModelChoices().then(() => {
@@ -569,6 +579,138 @@ const app = {
         document.querySelectorAll('.model-chip-menu.open').forEach((m) => m.classList.remove('open'));
       }
     });
+
+    const attachBtn = document.getElementById('attachBtn');
+    const fileInput = document.getElementById('fileInput');
+    if (attachBtn && fileInput) {
+      attachBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target?.files || []);
+        await this.queuePendingUploads(files);
+        fileInput.value = '';
+      });
+    }
+
+    const micBtn = document.getElementById('micBtn');
+    if (micBtn) {
+      micBtn.addEventListener('click', () => this.toggleVoiceInput());
+    }
+  },
+
+  setupVoiceInput() {
+    try {
+      const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const micBtn = document.getElementById('micBtn');
+      if (!SpeechRecognitionCtor || !micBtn) {
+        this.state.voiceSupported = false;
+        if (micBtn) {
+          micBtn.style.display = 'none';
+        }
+        return;
+      }
+
+      const recognition = new SpeechRecognitionCtor();
+      recognition.lang = 'en-US';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        this.state.isListening = true;
+        this.updateVoiceButtonState();
+      };
+
+      recognition.onresult = (event) => {
+        const input = document.getElementById('userInput');
+        if (!input) return;
+
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const res = event.results[i];
+          const transcript = String(res?.[0]?.transcript || '').trim();
+          if (!transcript) continue;
+          if (res.isFinal) {
+            this.state.voiceTranscriptFinal = `${this.state.voiceTranscriptFinal} ${transcript}`.trim();
+          } else {
+            interim = `${interim} ${transcript}`.trim();
+          }
+        }
+
+        const base = this.state.voiceSessionBaseText || '';
+        const finalText = this.state.voiceTranscriptFinal || '';
+        const composedVoice = [finalText, interim].filter(Boolean).join(' ').trim();
+        input.value = [base, composedVoice].filter(Boolean).join(base && composedVoice ? ' ' : '').trim();
+        this.autoResize(input);
+      };
+
+      recognition.onerror = (event) => {
+        const err = String(event?.error || 'unknown');
+        this.debugLog(`voice recognition error: ${err}`);
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+          this.showToast('Microphone permission was denied.', 'warning');
+        } else if (err !== 'no-speech' && err !== 'aborted') {
+          this.showToast('Voice input error. Please try again.', 'warning');
+        }
+      };
+
+      recognition.onend = () => {
+        this.state.isListening = false;
+        this.state.voiceTranscriptFinal = '';
+        this.state.voiceSessionBaseText = '';
+        this.updateVoiceButtonState();
+      };
+
+      this.state.voiceSupported = true;
+      this.state.voiceRecognition = recognition;
+      this.updateVoiceButtonState();
+    } catch (e) {
+      this.state.voiceSupported = false;
+      this.state.voiceRecognition = null;
+      this.debugLog(`setupVoiceInput error: ${e?.message || e}`);
+    }
+  },
+
+  updateVoiceButtonState() {
+    const micBtn = document.getElementById('micBtn');
+    if (!micBtn) return;
+    const supported = !!this.state.voiceSupported;
+    micBtn.style.display = supported ? '' : 'none';
+    micBtn.classList.toggle('listening', !!this.state.isListening);
+    micBtn.setAttribute('aria-label', this.state.isListening ? 'Stop voice input' : 'Start voice input');
+    micBtn.title = this.state.isListening ? 'Stop voice input' : 'Voice input';
+  },
+
+  toggleVoiceInput() {
+    if (!this.state.voiceSupported || !this.state.voiceRecognition) {
+      this.showToast('Voice input is not supported in this browser.', 'warning');
+      return;
+    }
+    if (this.state.isListening) {
+      this.stopVoiceInput();
+      return;
+    }
+    this.startVoiceInput();
+  },
+
+  startVoiceInput() {
+    try {
+      const input = document.getElementById('userInput');
+      this.state.voiceSessionBaseText = String(input?.value || '').trim();
+      this.state.voiceTranscriptFinal = '';
+      this.state.voiceRecognition.start();
+    } catch (e) {
+      this.debugLog(`startVoiceInput error: ${e?.message || e}`);
+      this.showToast('Could not start voice input.', 'warning');
+    }
+  },
+
+  stopVoiceInput() {
+    try {
+      if (this.state.voiceRecognition && this.state.isListening) {
+        this.state.voiceRecognition.stop();
+      }
+    } catch (e) {
+      this.debugLog(`stopVoiceInput error: ${e?.message || e}`);
+    }
   },
 
   async shutdownOfflineServerIfRunning() {
@@ -852,7 +994,63 @@ const app = {
     const raw = JSON.stringify(this.state.chats);
     localStorage.setItem('or_chats', raw);
     try { localStorage.setItem('or_chats_compressed', this._compress(raw)); } catch (_) {}
+    // If signed in, queue chat snapshots for cloud backup
+    try {
+      if (this.state.user?.id && typeof prismSync !== 'undefined' && prismSync.enqueue) {
+        this.state.chats.forEach((chat) => {
+          if (!chat?.id) return;
+          prismSync.enqueue('chat', chat.id, {
+            title: chat.title || 'New Chat',
+            messages: Array.isArray(chat.messages) ? chat.messages : [],
+            model: this.state.selectedModel || '',
+            mode: this.state.mode || 'single',
+            timestamp: Date.now()
+          }, 'upsert');
+        });
+      }
+    } catch (_) {}
     this.updateStorageUsage();
+  },
+
+  showToast(message, type = 'info', duration = 2800) {
+    const safeType = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+    let wrap = document.querySelector('.toast-container');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'toast-container';
+      document.body.appendChild(wrap);
+    }
+    const el = document.createElement('div');
+    el.className = `toast ${safeType}`;
+    el.textContent = String(message || 'Done');
+    wrap.appendChild(el);
+    setTimeout(() => {
+      el.classList.add('removing');
+      setTimeout(() => el.remove(), 280);
+    }, Math.max(1200, Number(duration) || 2800));
+  },
+
+  async handleAuthChange(user, session) {
+    const isInitialBootEvent = !this.state.authBootHandled;
+    this.state.authBootHandled = true;
+    this.state.user = user || null;
+    if (this.state.user) {
+      if (isInitialBootEvent) {
+        this.showToast(`Connected as ${this.state.user.email || 'user'}`, 'success', 2200);
+      }
+      try {
+        // Queue all existing chats for cloud backup and force a sync pass
+        this.persistChats();
+        if (typeof prismStorage !== 'undefined' && prismStorage.syncLocalFiles) {
+          await prismStorage.syncLocalFiles();
+        }
+        if (typeof prismSync !== 'undefined' && prismSync.forceSync) {
+          await prismSync.forceSync();
+        }
+      } catch (e) {
+        this.debugLog(`handleAuthChange sync warning: ${e?.message || e}`);
+      }
+    }
   },
 
   updateStorageUsage() {
@@ -1126,6 +1324,7 @@ const app = {
   updateComposerAvailability() {
     const input = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
+    const micBtn = document.getElementById('micBtn');
     if (!input || !sendBtn) return;
     const blocked =
       (this.state.offline && this.state.mode === 'multi') ||
@@ -1135,6 +1334,7 @@ const app = {
       this.state.connectionStatus === 'connecting';
     input.disabled = blocked;
     sendBtn.disabled = blocked;
+    if (micBtn) micBtn.disabled = blocked || this.state.isGenerating;
     if (this.state.modelSwitching) {
       input.placeholder = 'Please wait, local model is connecting...';
     } else if (this.state.quizGenerating) {
@@ -1205,6 +1405,13 @@ const app = {
       cancelText: 'Cancel'
     });
     if (!ok) return;
+
+    try {
+      if (this.state.user?.id && typeof prismSync !== 'undefined' && prismSync.enqueue) {
+        prismSync.enqueue('chat', chatId, { timestamp: Date.now() }, 'delete');
+      }
+    } catch (_) {}
+
     this.state.chats = this.state.chats.filter((c) => c.id !== chatId);
     if (this.state.currentChatId === chatId) this.state.currentChatId = this.state.chats[0]?.id || null;
     this.persistChats();
@@ -1243,8 +1450,10 @@ const app = {
       msgEl.textContent = message;
       inputEl.value = String(initialValue || '');
       modal.style.display = 'flex';
+      requestAnimationFrame(() => modal.classList.add('open'));
 
       const cleanup = (val) => {
+        modal.classList.remove('open');
         modal.style.display = 'none';
         okBtn.onclick = null;
         cancelBtn.onclick = null;
@@ -1787,8 +1996,10 @@ const app = {
       okBtn.textContent = confirmText;
       cancelBtn.textContent = cancelText;
       modal.style.display = 'flex';
+      requestAnimationFrame(() => modal.classList.add('open'));
 
       const cleanup = (val) => {
+        modal.classList.remove('open');
         modal.style.display = 'none';
         okBtn.onclick = null;
         cancelBtn.onclick = null;
@@ -1812,8 +2023,12 @@ const app = {
       return;
     }
     if (this.state.isGenerating) { this.addSystemNotice('Already generating. Press Stop or wait.'); return; }
+    if (this.state.isListening) this.stopVoiceInput();
     const input = document.getElementById('userInput'); if (!input) return;
-    let text = input.value.trim(); if (!text) return;
+    let text = input.value.trim();
+    const hasUploads = Array.isArray(this.state.pendingUploads) && this.state.pendingUploads.length > 0;
+    if (!text && !hasUploads) return;
+    if (!text && hasUploads) text = 'Please analyze the attached file(s).';
 
     this.state.awaitingQuizFollowup = false;
 
@@ -1840,9 +2055,23 @@ const app = {
       if (!modelOk) { this.removeLoading(); this.addSystemNotice('Select an offline model to continue.'); this.updateComposerAvailability(); return; }
     }
 
+    const attachmentPrompt = this.getPendingUploadsPrompt();
+
     chat = this.getCurrentChat(); if (!chat) { this.newChat(); chat = this.getCurrentChat(); }
-    chat.messages.push({ role:'user', content:text }); if (chat.title==='New Chat') chat.title = text.slice(0,40) || 'New Chat';
-    input.value=''; this.updateSlashMenu(''); this.renderChatList(); this.renderMessages(); this.persistChats(); this.addLoading();
+    chat.messages.push({
+      role:'user',
+      content:text,
+      attachmentContext: attachmentPrompt || '',
+      attachments: (this.state.pendingUploads || []).map((f) => ({ name: f.name, size: f.size, type: f.type }))
+    });
+    if (chat.title==='New Chat') chat.title = text.slice(0,40) || 'New Chat';
+    input.value='';
+    this.updateSlashMenu('');
+    this.clearPendingUploads();
+    this.renderChatList();
+    this.renderMessages();
+    this.persistChats();
+    this.addLoading();
 
     this.state.isGenerating = true; this.setGeneratingUI(true); this.state.runId += 1; const runId = this.state.runId; delete this.state.abortedRuns[runId];
     this.debugLog(`sendMessage: runId=${runId} mode=${this.state.mode}`);
@@ -1863,7 +2092,7 @@ const app = {
       const goalPrompt = this.getGoalSystemPrompt();
       if (goalPrompt) history.push({ role: 'system', content: goalPrompt });
       if (this.state.subagentEnabled && this.state.multiModels.length) history.push({ role: 'system', content: this.getSubagentPrompt() });
-      history.push(...chat.messages);
+      history.push(...this.buildModelHistory(chat.messages));
       const failedModels = [];
       let winner = null;
       let streamMsg = null;
@@ -2065,7 +2294,7 @@ const app = {
         let streamedContent = '';
         await chatCompletionStream(
           model,
-          (() => { const base = [{ role: 'system', content: this.TOOL_PROMPT }]; const gp = this.getGoalSystemPrompt(); if (gp) base.push({ role: 'system', content: gp }); return [...base, ...chat.messages.filter(m => !(m.model && String(m.model).includes('(streaming)')))] })(),
+          (() => { const base = [{ role: 'system', content: this.TOOL_PROMPT }]; const gp = this.getGoalSystemPrompt(); if (gp) base.push({ role: 'system', content: gp }); const filtered = chat.messages.filter(m => !(m.model && String(m.model).includes('(streaming)'))); return [...base, ...this.buildModelHistory(filtered)] })(),
           { temperature: this.getTemperature(), max_tokens: this.getMaxTokens(), retries: this.state.multiModelRetries[model] ? 3 : 1 },
           (delta) => {
             if (this.state.abortedRuns[runId]) return;
@@ -2099,7 +2328,7 @@ const app = {
               let retryStreamedContent = '';
               await chatCompletionStream(
                 model,
-                (() => { const base = [{ role: 'system', content: this.TOOL_PROMPT }]; const gp = this.getGoalSystemPrompt(); if (gp) base.push({ role: 'system', content: gp }); return [...base, ...chat.messages]; })(),
+                (() => { const base = [{ role: 'system', content: this.TOOL_PROMPT }]; const gp = this.getGoalSystemPrompt(); if (gp) base.push({ role: 'system', content: gp }); return [...base, ...this.buildModelHistory(chat.messages)]; })(),
                 { temperature: this.getTemperature(), max_tokens: this.getMaxTokens(), retries: 1 },
                 (delta) => { if (!this.state.abortedRuns[runId]) retryStreamedContent += delta; },
                 () => !!this.state.abortedRuns[runId]
@@ -2264,6 +2493,144 @@ const app = {
     this.updateSlashMenu(textarea.value);
   },
 
+  async queuePendingUploads(files = []) {
+    if (!Array.isArray(files) || !files.length) return;
+    const maxSizeBytes = 10 * 1024 * 1024;
+    const textLikeTypes = ['text/', 'application/json', 'application/xml', 'application/javascript', 'application/x-javascript'];
+    for (const file of files) {
+      if (!file) continue;
+      if (file.size > maxSizeBytes) {
+        this.showToast(`Skipped ${file.name}: max 10MB per file.`, 'warning');
+        continue;
+      }
+
+      let extractedText = '';
+      let extractedImageDataUrl = '';
+      try {
+        const mime = String(file.type || '').toLowerCase();
+        const name = String(file.name || '').toLowerCase();
+        const isTextLike =
+          textLikeTypes.some((t) => mime.startsWith(t) || mime === t) ||
+          /\.(txt|md|json|csv|log|js|ts|html|css|xml|yaml|yml)$/i.test(name);
+        const isImageLike = mime.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|ico)$/i.test(name);
+        if (isTextLike && typeof file.text === 'function') {
+          extractedText = await file.text();
+        }
+        if (isImageLike) {
+          extractedImageDataUrl = await this.fileToDataUrl(file);
+        }
+      } catch (e) {
+        this.debugLog(`queuePendingUploads text extract warning: ${e?.message || e}`);
+      }
+
+      this.state.pendingUploads.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'application/octet-stream',
+        file,
+        textContent: extractedText,
+        imageDataUrl: extractedImageDataUrl
+      });
+
+      try {
+        if (this.state.user?.id && typeof prismStorage !== 'undefined' && prismStorage.addFile) {
+          await prismStorage.addFile(this.state.user.id, file, 'chat-upload');
+        }
+      } catch (e) {
+        this.debugLog(`queuePendingUploads storage warning: ${e?.message || e}`);
+      }
+    }
+    this.renderPendingUploads();
+  },
+
+  renderPendingUploads() {
+    const wrap = document.getElementById('pendingUploads');
+    if (!wrap) return;
+    const uploads = Array.isArray(this.state.pendingUploads) ? this.state.pendingUploads : [];
+    if (!uploads.length) {
+      wrap.innerHTML = '';
+      wrap.style.display = 'none';
+      return;
+    }
+
+    wrap.style.display = 'flex';
+    wrap.innerHTML = '';
+    uploads.forEach((item, index) => {
+      const chip = document.createElement('div');
+      chip.className = 'pending-upload-chip';
+      const sizeKb = Math.max(1, Math.round((Number(item.size) || 0) / 1024));
+      chip.innerHTML = `<span class="name">${item.name}</span><span class="meta">${sizeKb} KB</span>`;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'pending-upload-remove';
+      removeBtn.type = 'button';
+      removeBtn.textContent = '×';
+      removeBtn.title = 'Remove file';
+      removeBtn.onclick = () => this.removePendingUpload(index);
+      chip.appendChild(removeBtn);
+      wrap.appendChild(chip);
+    });
+  },
+
+  removePendingUpload(index) {
+    if (!Array.isArray(this.state.pendingUploads)) return;
+    this.state.pendingUploads.splice(index, 1);
+    this.renderPendingUploads();
+  },
+
+  clearPendingUploads() {
+    this.state.pendingUploads = [];
+    this.renderPendingUploads();
+  },
+
+  getPendingUploadsPrompt() {
+    const uploads = Array.isArray(this.state.pendingUploads) ? this.state.pendingUploads : [];
+    if (!uploads.length) return '';
+    const lines = uploads.map((f, i) => `- ${i + 1}. ${f.name} (${Math.max(1, Math.round((Number(f.size) || 0) / 1024))} KB, ${f.type || 'unknown'})`);
+    const contentBlocks = uploads
+      .map((f, i) => {
+        const raw = String(f?.textContent || '').trim();
+        if (!raw && f?.imageDataUrl) {
+          const maxImageChars = 50000;
+          const img = String(f.imageDataUrl);
+          const clipped = img.length > maxImageChars ? `${img.slice(0, maxImageChars)}...[truncated]` : img;
+          return `File ${i + 1} (${f.name}) image data URL:\n${clipped}`;
+        }
+        if (!raw) return `File ${i + 1} (${f.name}): content not embedded (non-text or unreadable).`;
+        const clipped = raw.length > 12000 ? `${raw.slice(0, 12000)}\n...[truncated]` : raw;
+        return `File ${i + 1} (${f.name}) content:\n${clipped}`;
+      })
+      .join('\n\n');
+    return `Attached files:\n${lines.join('\n')}\n\n${contentBlocks}\n\nPlease use the attached file content when answering.`;
+  },
+
+  async fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+        reader.readAsDataURL(file);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+
+  buildModelHistory(messages = []) {
+    return (Array.isArray(messages) ? messages : []).map((m) => {
+      if (!m || typeof m !== 'object') return m;
+      if (m.role === 'user' && m.attachmentContext) {
+        return {
+          role: 'user',
+          content: `${String(m.content || '')}\n\n${String(m.attachmentContext || '')}`
+        };
+      }
+      return { role: m.role, content: String(m.content || '') };
+    });
+  },
+
   exportChat() {
     const chat = this.getCurrentChat(); if (!chat) return alert('No active chat to export.');
     const blob = new Blob([JSON.stringify(chat, null, 2)], { type: 'application/json' });
@@ -2357,6 +2724,16 @@ const app = {
       confirmText: 'Delete Chats'
     });
     if (!ok) return;
+
+    try {
+      if (this.state.user?.id && typeof prismSync !== 'undefined' && prismSync.enqueue) {
+        this.state.chats.forEach((chat) => {
+          if (!chat?.id) return;
+          prismSync.enqueue('chat', chat.id, { timestamp: Date.now() }, 'delete');
+        });
+      }
+    } catch (_) {}
+
     this.state.chats = [];
     this.state.currentChatId = null;
     localStorage.removeItem('or_chats');
