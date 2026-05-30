@@ -1200,7 +1200,8 @@ input[type="range"]::-moz-range-thumb {
   align-items: center;
   justify-content: center;
   z-index: 200;
-  opacity: 0;
+  /* Keep visible whenever JS sets display:flex (some modals are toggled via inline display only). */
+  opacity: 1;
   transition: opacity var(--duration-normal);
 }
 .modal-overlay.open { opacity: 1; }
