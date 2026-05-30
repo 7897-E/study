@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#6C5CE7">
 <!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1"></script>
-<script src="supabase.config.local.js"></script>
+<script src="config-loader.js"></script>
 <!-- DOMPurify for XSS sanitization -->
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3"></script>
 </head>
@@ -407,13 +407,17 @@
 <!-- Prism Boot Sequence -->
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
-  // Supabase credentials loaded from local config file
+  // Supabase credentials loaded from config loader (/api/supabase-config on Vercel)
+  if (window.prismLoadSupabaseConfig) {
+    await window.prismLoadSupabaseConfig();
+  }
+
   const SUPABASE_URL = window.PRISM_SUPABASE_CONFIG?.url || '';
   const SUPABASE_PUBLISHABLE_KEY = window.PRISM_SUPABASE_CONFIG?.publishableKey || '';
 
   try {
     if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-      throw new Error('Missing Supabase config. Set window.PRISM_SUPABASE_CONFIG in supabase.config.local.js');
+      throw new Error('Missing Supabase config. Configure /api/supabase-config via Vercel env vars.');
     }
 
     // 1. Init Supabase client

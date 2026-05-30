@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#7c5cff">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1"></script>
-<script src="supabase.config.local.js"></script>
+<script src="config-loader.js"></script>
 <script src="supabase.js"></script>
 <script src="auth.js"></script>
 <style>
@@ -224,6 +224,9 @@ async function loadAdminState() {
   const content = document.getElementById('adminContent');
   const hint = document.getElementById('adminActionHint');
   try {
+    if (window.prismLoadSupabaseConfig) {
+      await window.prismLoadSupabaseConfig();
+    }
     const url = window.PRISM_SUPABASE_CONFIG?.url || '';
     const key = window.PRISM_SUPABASE_CONFIG?.publishableKey || '';
     await prismSupabase.init(url, key);
