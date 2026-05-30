@@ -67,11 +67,13 @@ const prismSupabase = (() => {
         config = { url: bUrl, key: bKey, bucket: 'user-files' };
 
         // Step 3: Try to read admin-configured credentials from app_config
+        // Use maybeSingle() to avoid 406 when no row exists yet.
         try {
           const { data, error } = await client
             .from('app_config')
             .select('*')
-            .single();
+            .limit(1)
+            .maybeSingle();
 
           if (!error && data && data.supabase_url && data.supabase_anon_key) {
             // Admin has configured credentials — switch to them
@@ -83,8 +85,8 @@ const prismSupabase = (() => {
             client = createClient(config.url, config.key);
           }
         } catch (e) {
-          // app_config table might not exist yet or no admin config — use bootstrap
-          console.log('[Supabase] Using bootstrap config (no admin config found)');
+          // app_config table might not exist yet, be blocked by RLS, or no admin config — use bootstrap
+          console.log('[Supabase] Using bootstrap config (admin config unavailable):', e?.message || e);
         }
 
         // Step 4: Cache config for offline use
@@ -154,7 +156,8 @@ const prismSupabase = (() => {
       const { data, error } = await client
         .from('app_config')
         .select('*')
-        .single();
+        .limit(1)
+        .maybeSingle();
       if (error) return null;
       return data;
     } catch (e) { return null; }
