@@ -8,6 +8,47 @@ const prismAuth = (() => {
   let isInitialized = false;
   let authListener = null;
   const ADMIN_CACHE_KEY = 'prism_admin_status_cache';
+  let disabledGuardInProgress = false;
+  let blockedNoticeShown = false;
+
+  function showBlockedNoticeOnce() {
+    if (blockedNoticeShown) return;
+    blockedNoticeShown = true;
+    if (window.app?.showToast) {
+      window.app.showToast('Account disabled. Contact an admin.', 'error');
+    }
+  }
+
+  async function assertUserNotDisabled(user) {
+    const supabase = prismSupabase.getClient();
+    if (!supabase || !user?.id) return true;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('set_disabled')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        // If profile is missing or unreadable, do not hard-block auth.
+        // Access control should still be enforced by RLS.
+        return true;
+      }
+
+      if (data?.set_disabled === true) {
+        await supabase.auth.signOut();
+        throw new Error('This account has been disabled. Please contact an admin.');
+      }
+
+      return true;
+    } catch (e) {
+      if (String(e?.message || '').toLowerCase().includes('disabled')) {
+        throw e;
+      }
+      return true;
+    }
+  }
 
   // ---------- Init ----------
   async function init() {
@@ -22,6 +63,18 @@ const prismAuth = (() => {
     // Set up auth state listener
     authListener = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[Auth] Auth state changed:', event);
+
+      if (!disabledGuardInProgress && session?.user && event !== 'SIGNED_OUT') {
+        disabledGuardInProgress = true;
+        assertUserNotDisabled(session.user)
+          .catch((err) => {
+            console.warn('[Auth] Disabled-account guard:', err?.message || err);
+            showBlockedNoticeOnce();
+          })
+          .finally(() => {
+            disabledGuardInProgress = false;
+          });
+      }
       
       // Update app state with user info
       if (window.app && typeof window.app.updateUserState === 'function') {
@@ -96,7 +149,9 @@ const prismAuth = (() => {
     if (error) throw error;
     if (data?.user) {
       await ensureProfile(data.user);
+      await assertUserNotDisabled(data.user);
     }
+    blockedNoticeShown = false;
     return data;
   }
 
