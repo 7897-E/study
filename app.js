@@ -1,3 +1,36 @@
+const localStorage = (() => {
+  try {
+    const s = window.localStorage;
+    const probeKey = '__prism_storage_probe__';
+    s.setItem(probeKey, '1');
+    s.removeItem(probeKey);
+    return s;
+  } catch (_err) {
+    const mem = new Map();
+    return {
+      getItem(key) {
+        return mem.has(String(key)) ? mem.get(String(key)) : null;
+      },
+      setItem(key, value) {
+        mem.set(String(key), String(value));
+      },
+      removeItem(key) {
+        mem.delete(String(key));
+      },
+      clear() {
+        mem.clear();
+      },
+      key(index) {
+        const keys = Array.from(mem.keys());
+        return keys[index] ?? null;
+      },
+      get length() {
+        return mem.size;
+      }
+    };
+  }
+})();
+
 const app = {
   state: {
     apiKey: localStorage.getItem('or_api_key') || '',
