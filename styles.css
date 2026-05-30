@@ -1855,21 +1855,79 @@ input[type="range"]::-moz-range-thumb {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
+  body {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .top-newchat-mini {
+    display: inline-flex;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .top-actions {
+    gap: 6px;
+  }
+
+  .top-bar {
+    padding: 0 var(--space-3);
+  }
+
   .sidebar {
     position: fixed;
     left: 0; top: var(--topbar-height); bottom: 0;
     z-index: 60;
+    width: min(84vw, 320px);
     transform: translateX(-100%);
+    transition: transform var(--duration-normal) var(--ease-out);
   }
   .sidebar.open { transform: translateX(0); }
-  .sidebar.collapsed { width: var(--sidebar-width); }
+  .sidebar.collapsed { width: min(84vw, 320px); }
   .sidebar.collapsed .chat-list,
   .sidebar.collapsed .sidebar-footer { display: block; }
+
+  .main-container {
+    min-height: 0;
+  }
+
+  .chat-area {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .model-bar {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .message {
+    max-width: 100%;
+  }
+
+  .message > div {
+    padding: var(--space-3);
+  }
+
+  .input-area {
+    padding: var(--space-2);
+  }
+
+  .input-wrap {
+    gap: 6px;
+  }
+
+  .input-wrap textarea {
+    font-size: 16px;
+  }
 
   .landing-hero h1 { font-size: 2.2rem; }
   .landing-features { grid-template-columns: 1fr; }
   .settings-panel { width: 100%; }
-  .message { max-width: 92%; }
   .messages { padding: var(--space-3); }
 }
 

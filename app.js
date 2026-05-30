@@ -1514,11 +1514,25 @@ const app = {
   toggleSidebar() {
     const sb = document.querySelector('.sidebar');
     const btn = document.getElementById('sidebarToggleBtn');
+    const topBtn = document.getElementById('topSidebarToggleBtn');
     if (!sb) return;
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+    if (isMobile) {
+      sb.classList.toggle('open');
+      const isOpen = sb.classList.contains('open');
+      if (btn) btn.title = isOpen ? 'Hide chats' : 'Show chats';
+      if (topBtn) topBtn.title = isOpen ? 'Hide chats' : 'Show chats';
+      if (topBtn) topBtn.setAttribute('aria-label', isOpen ? 'Hide chats' : 'Show chats');
+      return;
+    }
+
     sb.classList.toggle('collapsed');
     document.body.classList.toggle('sidebar-collapsed', sb.classList.contains('collapsed'));
     if (btn) btn.textContent = '☰';
     if (btn) btn.title = sb.classList.contains('collapsed') ? 'Show chats' : 'Hide chats';
+    if (topBtn) topBtn.title = sb.classList.contains('collapsed') ? 'Show chats' : 'Hide chats';
+    if (topBtn) topBtn.setAttribute('aria-label', sb.classList.contains('collapsed') ? 'Show chats' : 'Hide chats');
   },
 
   newChat() {
