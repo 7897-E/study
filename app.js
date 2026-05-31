@@ -203,8 +203,7 @@ const app = {
         if (modal) modal.style.display = 'flex';
       }
     });
-    if (!this.state.apiKey) document.getElementById('apiModal').style.display = 'flex';
-    else this.fetchAndCacheModels();
+    if (this.state.apiKey) this.fetchAndCacheModels();
     this.debugLog('init() complete');
   },
 
@@ -2323,7 +2322,8 @@ const app = {
         const settingsKey = document.getElementById('settingsApiKey');
         if (settingsKey) settingsKey.value = fallbackKey;
       } else {
-        document.getElementById('apiModal').style.display='flex'; this.addSystemNotice('Add API key first.'); return;
+        this.addSystemNotice('Online API key is not configured yet. Ask admin to set the default API key in Admin Panel.');
+        return;
       }
     }
     if (!this.state.selectedModel) { this.addSystemNotice('Pick a chat model in Settings first.'); return; }
@@ -3065,8 +3065,7 @@ const app = {
       confirmText: 'OK',
       cancelText: 'OK'
     });
-    const modal = document.getElementById('apiModal');
-    if (modal) modal.style.display = 'flex';
+    // Do not force API key modal open; user can still set a key manually in Settings.
   },
 
   async clearAllData() {
