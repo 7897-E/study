@@ -1124,11 +1124,14 @@ const app = {
       if (!sb) return null;
       const { data, error } = await sb
         .from('profiles')
-        .select('preferences')
+        .select('preferences, api_key')
         .eq('id', userId)
         .single();
       if (error) throw error;
-      return data?.preferences || null;
+      return {
+        preferences: data?.preferences || null,
+        apiKey: data?.api_key || ''
+      };
     } catch (_) {
       return null;
     }
@@ -1146,11 +1149,39 @@ const app = {
             multiModels: this.state.multiModels || [],
             multiModelRetries: this.state.multiModelRetries || {}
           },
+          api_key: this.state.apiKey || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);
     } catch (_) {
       // optional column/path; ignore if schema doesn't include preferences
+    }
+  },
+
+  async getDefaultApiKeyFromAppConfig() {
+    try {
+      if (typeof prismSupabase === 'undefined' || !prismSupabase.getAppConfig) return '';
+      const cfg = await prismSupabase.getAppConfig();
+      return String(cfg?.openrouter_api_key || '').trim();
+    } catch (_) {
+      return '';
+    }
+  },
+
+  async persistApiKeyToProfile(userId, apiKey) {
+    if (!userId || typeof prismSupabase === 'undefined') return;
+    try {
+      const sb = prismSupabase.getClient();
+      if (!sb) return;
+      await sb
+        .from('profiles')
+        .update({
+          api_key: apiKey || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+    } catch (_) {
+      // optional schema path; ignore if unavailable
     }
   },
 
@@ -1207,9 +1238,20 @@ const app = {
 
         const cloudPrefs = await this.pullCloudPreferencesForUser(this.state.user.id);
         const localModels = Array.isArray(scoped.multiModels) ? scoped.multiModels.filter(Boolean) : [];
-        const cloudModels = Array.isArray(cloudPrefs?.multiModels) ? cloudPrefs.multiModels.filter(Boolean) : [];
+        const cloudModels = Array.isArray(cloudPrefs?.preferences?.multiModels) ? cloudPrefs.preferences.multiModels.filter(Boolean) : [];
         const localRetries = (scoped.multiModelRetries && typeof scoped.multiModelRetries === 'object') ? scoped.multiModelRetries : {};
-        const cloudRetries = (cloudPrefs?.multiModelRetries && typeof cloudPrefs.multiModelRetries === 'object') ? cloudPrefs.multiModelRetries : {};
+        const cloudRetries = (cloudPrefs?.preferences?.multiModelRetries && typeof cloudPrefs.preferences.multiModelRetries === 'object') ? cloudPrefs.preferences.multiModelRetries : {};
+
+        const cloudApiKey = String(cloudPrefs?.apiKey || '').trim();
+        const defaultApiKey = await this.getDefaultApiKeyFromAppConfig();
+        const resolvedApiKey = cloudApiKey || this.state.apiKey || defaultApiKey;
+        if (resolvedApiKey) {
+          this.state.apiKey = resolvedApiKey;
+          localStorage.setItem('or_api_key', resolvedApiKey);
+          const settingsKey = document.getElementById('settingsApiKey');
+          if (settingsKey) settingsKey.value = resolvedApiKey;
+          await this.persistApiKeyToProfile(this.state.user.id, resolvedApiKey);
+        }
 
         // Local is authoritative when present: override cloud list with local list.
         const useLocalAsSourceOfTruth = localModels.length > 0;
@@ -1439,6 +1481,7 @@ const app = {
     this.debugLog(`saveApiKey() key.length=${key?.length || 0}`);
     if (!key) return alert('Please enter an API key.');
     this.state.apiKey = key; localStorage.setItem('or_api_key', key);
+    if (this.state.user?.id) this.persistApiKeyToProfile(this.state.user.id, key);
     this.updateStorageUsage();
     const s = document.getElementById('settingsApiKey'); if (s) s.value = key;
     this.closeApiModal(); this.fetchAndCacheModels();
@@ -1450,7 +1493,7 @@ const app = {
     const key = document.getElementById('settingsApiKey')?.value.trim();
     this.debugLog(`saveApiKeyFromSettings() key.length=${key?.length || 0}`);
     if (!key) return alert('Please enter an API key.');
-    this.state.apiKey = key; localStorage.setItem('or_api_key', key); this.updateStorageUsage(); alert('API key saved. Loading models...'); this.fetchAndCacheModels();
+    this.state.apiKey = key; localStorage.setItem('or_api_key', key); if (this.state.user?.id) this.persistApiKeyToProfile(this.state.user.id, key); this.updateStorageUsage(); alert('API key saved. Loading models...'); this.fetchAndCacheModels();
   },
 
   setMode(mode) {
@@ -2271,7 +2314,18 @@ const app = {
       if (typeof openAuthModal === 'function') openAuthModal();
       return;
     }
-    if (!this.state.offline && !this.state.apiKey) { document.getElementById('apiModal').style.display='flex'; this.addSystemNotice('Add API key first.'); return; }
+    if (!this.state.offline && !this.state.apiKey) {
+      const fallbackKey = await this.getDefaultApiKeyFromAppConfig();
+      if (fallbackKey) {
+        this.state.apiKey = fallbackKey;
+        localStorage.setItem('or_api_key', fallbackKey);
+        if (this.state.user?.id) this.persistApiKeyToProfile(this.state.user.id, fallbackKey);
+        const settingsKey = document.getElementById('settingsApiKey');
+        if (settingsKey) settingsKey.value = fallbackKey;
+      } else {
+        document.getElementById('apiModal').style.display='flex'; this.addSystemNotice('Add API key first.'); return;
+      }
+    }
     if (!this.state.selectedModel) { this.addSystemNotice('Pick a chat model in Settings first.'); return; }
 
     if (this.state.offline) {

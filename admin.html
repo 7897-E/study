@@ -98,6 +98,8 @@
             <input id="cfgUrl" type="text" placeholder="https://...supabase.co">
             <label class="admin-k">Supabase Anon Key</label>
             <input id="cfgAnonKey" type="password" placeholder="eyJ...">
+            <label class="admin-k">Default OpenRouter API Key</label>
+            <input id="cfgDefaultApiKey" type="password" placeholder="sk-or-v1-...">
             <label class="admin-k">Storage Bucket</label>
             <input id="cfgBucket" type="text" placeholder="user-files">
           </div>
@@ -251,6 +253,7 @@ async function loadAdminState() {
     document.getElementById('adminBucket').textContent = cfg.bucket || 'user-files';
     document.getElementById('cfgUrl').value = appCfg?.supabase_url || cfg.url || '';
     document.getElementById('cfgAnonKey').value = appCfg?.supabase_anon_key || cfg.key || '';
+    document.getElementById('cfgDefaultApiKey').value = appCfg?.openrouter_api_key || '';
     document.getElementById('cfgBucket').value = appCfg?.storage_bucket || cfg.bucket || 'user-files';
     status.textContent = 'Admin access granted.';
     denied.style.display = 'none';
@@ -482,6 +485,7 @@ document.getElementById('saveCfgBtn')?.addEventListener('click', async () => {
     await prismSupabase.updateAppConfig({
       supabase_url: document.getElementById('cfgUrl').value.trim(),
       supabase_anon_key: document.getElementById('cfgAnonKey').value.trim(),
+      openrouter_api_key: document.getElementById('cfgDefaultApiKey').value.trim(),
       storage_bucket: document.getElementById('cfgBucket').value.trim() || 'user-files'
     });
     hint.textContent = 'Config saved.';
